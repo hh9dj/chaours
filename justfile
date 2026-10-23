@@ -17,6 +17,12 @@ build:
 test:
     pnpm -C {{frontend}} test
 
+backend-test:
+    uv run --directory backend pytest
+
+backend-run:
+    uv run --directory backend python -m chaours
+
 check: test build
 
 clean:

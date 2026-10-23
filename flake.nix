@@ -25,6 +25,10 @@
             env = {
               UV_PYTHON_DOWNLOADS = "never";
               UV_PYTHON = "${pkgs.python312}/bin/python";
+              LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+                pkgs.stdenv.cc.cc.lib
+                pkgs.zlib
+              ];
             };
             packages = with pkgs; [
               nodejs_22
