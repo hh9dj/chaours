@@ -15,3 +15,4 @@ project context and functional requirements are available [spec](./spec/README.m
 ## Rules
 
 - Application Frontend interface should be in french
+- When working inside a separate worktree sync dependencies using uv sync / pnpm install
