@@ -24,7 +24,7 @@
           default = pkgs.mkShell {
             env = {
               UV_PYTHON_DOWNLOADS = "never";
-              UV_PYTHON = "${pkgs.python314}/bin/python";
+              UV_PYTHON = "${pkgs.python312}/bin/python";
             };
             packages = with pkgs; [
               nodejs_22
