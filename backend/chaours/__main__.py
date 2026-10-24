@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from chaours.constants import DEFAULT_HORIZON_DAYS
 from chaours.types import OutageKind, Plant, Scenario
-
-from .constants import DEFAULT_HORIZON_DAYS
 
 
 def mock_scenario() -> Scenario:
@@ -15,7 +14,7 @@ def mock_scenario() -> Scenario:
         horizon_days=horizon,
         spot_prices=np.full(horizon, 80.0),
         demand_mwh=np.full(horizon, 50_000.0),
-        usage_values_eur_mwh=np.array([60.0]),
+        usage_values_eur_mwh={"P1": 60.0},
         plants=(
             Plant(
                 id="P1",

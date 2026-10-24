@@ -33,25 +33,25 @@ jours_epuises = np.where(jepp_restant <= 0)[0]
 date_epuisement = jours_epuises[0] if len(jours_epuises) > 0 else None
 ```
 
-### B. Arbitrage économique (valeur d'usage contre prix spot)
+### B. Surveillance économique (valeur d'usage contre prix spot)
 
-Principe : maximiser la valeur de la production face au marché de l'énergie.
+Principe : signaler les périodes où le prix spot est inférieur à la valeur d'usage. Le moteur ne modifie jamais automatiquement les facteurs de charge.
 
 Entrées :
 
-- `valeur_usage` (Float) : coût d'opportunité du stock (€/MWh).
-- `prix_spot` (Array 1D) : prévisions des prix de marché par jour.
-- `puissance_modulation` (Float) : niveau de puissance à appliquer si on module, par exemple 0.5.
+- `valeur_usage` (Mapping[str, Float]) : seuil statique du coût d'opportunité du stock (€/MWh) pour le MVP, indexé par identifiant de tranche. La table doit contenir exactement une entrée par tranche.
+- `prix_spot` (Array 1D) : prévisions des prix de marché par jour (€/MWh).
 
 Sorties :
 
-- `vecteur_production_optimise` (Array 1D) : nouveau profil de production.
+- `alertes` (List) : une alerte par tranche et par jour où `prix_spot < valeur_usage[plant_id]`.
 
 ```python
-# Si le prix spot est supérieur à la VU, on tourne à 100% (1.0)
-# Sinon, on applique la modulation pour économiser le JEPP
-vecteur_production_optimise = np.where(prix_spot > valeur_usage, 1.0, puissance_modulation)
+# Détection seule : les facteurs de charge restent inchangés
+jours_sous_la_vu = np.where(prix_spot < valeur_usage[plant_id])[0]
 ```
+
+La VU reste un scalaire par tranche dans le MVP. Si elle devient une série journalière, sa forme passe à `(horizon,)` et la comparaison par broadcasting reste valide sans changer la logique d'alerte.
 
 ### C. Modulation manuelle (hypothèse utilisateur)
 

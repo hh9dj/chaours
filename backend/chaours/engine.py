@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .types import Scenario, SimulationResult
+from chaours.types import Scenario, SimulationResult
 
 
 class NucliEngine:
@@ -9,13 +9,13 @@ class NucliEngine:
     Ordre du pipeline :
 
     1. facteurs de charge nominaux
-    2. arbitrage économique à partir du prix spot et des valeurs d'usage
-    3. fenêtres de modulation manuelle
-    4. masque de maintenance, appliqué en dernier pour que les arrêts
+    2. fenêtres de modulation manuelle
+    3. masque de maintenance, appliqué en dernier pour que les arrêts
        gagnent toujours
-    5. épuisement JEPP et stretch-out
-    6. énergie journalière, agrégation nationale et déficits
-    7. alertes neutroniques, REMIT et déficits
+    4. épuisement JEPP et stretch-out
+    5. énergie journalière, agrégation nationale et déficits
+    6. alertes neutroniques, REMIT, déficits et prix spot sous la valeur
+       d'usage
 
     Le moteur est sans état : chaque exécution reçoit un ``Scenario`` complet.
     """

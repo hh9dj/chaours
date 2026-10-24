@@ -4,8 +4,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from .constants import DEFAULT_MODULATION_FACTOR
-from .types import Maintenance, Modulation
+from chaours.types import Maintenance, Modulation
 
 
 def maintenance_mask(
@@ -29,23 +28,6 @@ def modulation_factors(horizon: int) -> np.ndarray:
     return np.ones(horizon, np.float16)
 
 
-def apply_economic_arbitrage(
-    factors: np.ndarray,
-    spot_prices: np.ndarray,
-    usage_values_eur_mwh: np.ndarray,
-    modulation_factor: float = DEFAULT_MODULATION_FACTOR,
-) -> np.ndarray:
-    """Module la production selon le prix spot et la valeur d'usage.
-
-    ``factors`` a la forme ``(n_plants, horizon)``, ``spot_prices`` la forme
-    ``(horizon,)`` et ``usage_values_eur_mwh`` la forme ``(n_plants,)``.
-    La production reste à ``1.0`` quand le prix spot dépasse la valeur
-    d'usage, sinon elle descend à ``modulation_factor``.
-    Renvoie un nouveau tableau de même forme que ``factors``.
-    """
-    raise NotImplementedError
-
-
 def apply_manual_modulation(
     factors: np.ndarray,
     modulations: Sequence[Modulation],
@@ -54,8 +36,7 @@ def apply_manual_modulation(
     """Applique les fenêtres de modulation de l'utilisateur.
 
     Chaque fenêtre force ``factor`` sur l'intervalle de jours semi-ouvert
-    ``[start_day, end_day)``. La modulation manuelle écrase le résultat de
-    l'arbitrage économique. Renvoie un nouveau tableau de même forme que
+    ``[start_day, end_day)``. Renvoie un nouveau tableau de même forme que
     ``factors``.
     """
     raise NotImplementedError

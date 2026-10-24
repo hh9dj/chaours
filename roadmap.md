@@ -9,10 +9,18 @@
 
   - Create a 2D boolean mask (`bool_`) representing scheduled maintenance outages (ASR, VP, VD).
 
-- **Step 1.2: Economic Arbitrage (The Modulation Engine)**
-  - Compare the Spot price array against each plant's Usage Value (VU).
+- **Step 1.2: Economic Monitoring (Spot Price vs Usage Value)**
+  - Keep the Usage Value (VU) as a static scalar per plant for the MVP. EDF computes it as a dynamic time series in production, but the scalar keeps the frontend to one input per reactor.
 
-  - Use `np.where` to generate a 2D matrix of targeted production factors ($0.0 \le \text{factor} \le 1.0$).
+  - Store VU values in the scenario as a mapping keyed by plant ID, so the association never depends on array order.
+
+  - Compare both values in €/MWh: the daily Spot price array against each plant's Usage Value (VU).
+
+  - Raise one alert per plant and day where the Spot price is below the VU.
+
+  - Keep the comparison broadcasting-friendly so a future daily VU vector can replace the scalar without rewriting the alert logic.
+
+  - Never modify production factors automatically. Modulation stays manual.
 
   - Apply the maintenance mask to force production factors to $0.0$ on outage days.
 
