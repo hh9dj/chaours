@@ -25,5 +25,5 @@
 
 - Le calcul de décharge JEPP prend en compte la modulation, donc les MW réels par rapport aux MW nominaux.
 - Le simulateur alerte lorsque la somme de la puissance disponible est inférieure à la pointe hivernale.
-- Les règles de modulation respectent le seuil d'arbitrage entre prix spot et valeur d'usage (VU).
+- Le simulateur alerte lorsque le prix spot est inférieur à la valeur d'usage (VU), sans modifier les facteurs de charge.
 - Le moteur de simulation est séparé de l'interface graphique (IHM).

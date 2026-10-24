@@ -1,4 +1,4 @@
-# 02 - Domaine métier
+# 02 - Concepts
 
 ## Physique du réacteur et notion économique pivot
 
@@ -18,12 +18,14 @@ Si une tranche tourne à 50 % de sa puissance nominale pendant 24 heures, elle n
 
 L'arbitrage temporel consiste à conserver du combustible en été, quand la demande et les prix spot sont bas ou négatifs, pour le restituer en hiver, période de tension et de prix forts.
 
-La valeur d'usage (VU) représente le coût d'opportunité du MWh nucléaire, c'est-à-dire le gain financier futur estimé d'un MWh conservé en stock.
+La valeur d'usage (VU) représente le coût d'opportunité du MWh nucléaire, c'est-à-dire le gain financier futur estimé d'un MWh conservé en stock. Elle est exprimée en €/MWh, comme le prix spot, ce qui permet une comparaison directe.
 
-Règle de décision économique :
+La VU dépend de la tranche, de son cycle de combustible et de son stock restant. Elle peut aussi évoluer dans le temps avec les prévisions météo et les marchés à terme.
 
-- Prix spot supérieur à la VU : produire à 100 %, appel marché prioritaire.
-- Prix spot inférieur à la VU : moduler la puissance et économiser les JEPP pour l'hiver.
+Règle de surveillance économique :
+
+- Prix spot supérieur à la VU : aucun signalement.
+- Prix spot inférieur à la VU : lever une alerte informative. La modulation de puissance reste exclusivement manuelle.
 
 ## Arrêts de tranche et contraintes
 
