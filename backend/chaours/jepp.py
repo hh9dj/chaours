@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .types import FloatArray
+from chaours.types import FloatArray
 
 
 def remaining_jepp(initial_stock: float, factors: FloatArray) -> FloatArray:
