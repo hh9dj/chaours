@@ -1,10 +1,10 @@
-from .constants import (
+from chaours.constants import (
     DEFAULT_HORIZON_DAYS,
     DEFAULT_MODULATION_FACTOR,
     REMIT_THRESHOLD_MW,
 )
-from .engine import NucliEngine
-from .types import (
+from chaours.engine import NucliEngine
+from chaours.types import (
     Alert,
     AlertKind,
     Maintenance,

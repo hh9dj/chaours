@@ -25,11 +25,13 @@ class AlertKind(str, Enum):
     - ``NEUTRONIC_ANOMALY`` : stock épuisé avant l'arrêt prévu.
     - ``REMIT_UMM`` : variation de puissance au-dessus du seuil REMIT.
     - ``RTE_DEFICIT`` : offre nationale insuffisante face à la demande.
+    - ``SPOT_BELOW_USAGE_VALUE`` : prix spot inférieur à la valeur d'usage.
     """
 
     NEUTRONIC_ANOMALY = "NEUTRONIC_ANOMALY"
     REMIT_UMM = "REMIT_UMM"
     RTE_DEFICIT = "RTE_DEFICIT"
+    SPOT_BELOW_USAGE_VALUE = "SPOT_BELOW_USAGE_VALUE"
 
 
 class Severity(str, Enum):
@@ -88,7 +90,7 @@ class Modulation:
     factor: float
 
 
-@dataclass(frozen=True)
+@dataclass
 class Scenario:
     """Entrée complète d'une simulation.
 
@@ -97,18 +99,19 @@ class Scenario:
     - ``spot_prices`` : prix spot de forme ``(horizon_days,)``, en €/MWh.
     - ``demand_mwh`` : demande nationale de forme ``(horizon_days,)``,
       en MWh/jour.
-    - ``usage_values_eur_mwh`` : valeur d'usage de forme ``(n_plants,)``,
-      en €/MWh, une valeur par tranche dans l'ordre de ``plants``.
-    - ``plants`` : tranches du parc.
-    - ``maintenances`` : arrêts planifiés.
-    - ``modulations`` : modulations manuelles.
+    - ``usage_values_eur_mwh`` : valeur d'usage en €/MWh, un scalaire
+      statique par tranche, indexé par identifiant de tranche. Ce n'est pas
+      une série journalière dans le MVP.
+
+    Le scénario est mutable pour le POC : ses champs et la table de valeurs
+    d'usage peuvent être modifiés directement.
     """
 
     scenario_id: str
     horizon_days: int
     spot_prices: np.ndarray
     demand_mwh: np.ndarray
-    usage_values_eur_mwh: np.ndarray
+    usage_values_eur_mwh: dict[str, float]
     plants: tuple[Plant, ...]
     maintenances: tuple[Maintenance, ...] = ()
     modulations: tuple[Modulation, ...] = ()
