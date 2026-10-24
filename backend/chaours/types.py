@@ -4,6 +4,11 @@ from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
+from numpy.typing import NDArray
+
+FloatArray = NDArray[np.float64]
+BoolArray = NDArray[np.bool_]
+IntArray = NDArray[np.intp]
 
 
 class OutageKind(str, Enum):
@@ -109,8 +114,8 @@ class Scenario:
 
     scenario_id: str
     horizon_days: int
-    spot_prices: np.ndarray
-    demand_mwh: np.ndarray
+    spot_prices: FloatArray
+    demand_mwh: FloatArray
     usage_values_eur_mwh: dict[str, float]
     plants: tuple[Plant, ...]
     maintenances: tuple[Maintenance, ...] = ()
@@ -134,9 +139,9 @@ class PlantResult:
     """
 
     plant_id: str
-    production_factors: np.ndarray
-    energy_mwh: np.ndarray
-    remaining_jepp: np.ndarray
+    production_factors: FloatArray
+    energy_mwh: FloatArray
+    remaining_jepp: FloatArray
     depletion_day: int | None
     stretch_out_applied: bool
 
@@ -177,7 +182,7 @@ class SimulationResult:
     scenario_id: str
     execution_time_ms: float
     plants: tuple[PlantResult, ...]
-    national_supply_mwh: np.ndarray
-    demand_mwh: np.ndarray
-    deficit_days: np.ndarray
+    national_supply_mwh: FloatArray
+    demand_mwh: FloatArray
+    deficit_days: IntArray
     alerts: tuple[Alert, ...]

@@ -20,10 +20,15 @@ test:
 backend-test:
     uv run --directory backend pytest
 
+backend-typecheck:
+    uv run --directory backend mypy
+
+backend-check: backend-test backend-typecheck
+
 backend-run:
     uv run --directory backend python -m chaours
 
-check: test build
+check: test build backend-check
 
 clean:
     rm -rf {{frontend}}/dist {{frontend}}/node_modules

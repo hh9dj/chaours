@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import numpy as np
+from .types import FloatArray, IntArray
 
 
-def energy_mwh(factors: np.ndarray, nominal_power_mw: np.ndarray) -> np.ndarray:
+def energy_mwh(factors: FloatArray, nominal_power_mw: FloatArray) -> FloatArray:
     """Convertit les facteurs de charge en énergie journalière.
 
     ``factors`` a la forme ``(n_plants, horizon)`` et ``nominal_power_mw``
@@ -13,7 +13,7 @@ def energy_mwh(factors: np.ndarray, nominal_power_mw: np.ndarray) -> np.ndarray:
     raise NotImplementedError
 
 
-def national_supply(energy_mwh: np.ndarray) -> np.ndarray:
+def national_supply(energy_mwh: FloatArray) -> FloatArray:
     """Somme l'énergie des tranches sur l'axe des tranches.
 
     ``energy_mwh`` a la forme ``(n_plants, horizon)``. Renvoie un tableau 1D
@@ -22,7 +22,7 @@ def national_supply(energy_mwh: np.ndarray) -> np.ndarray:
     raise NotImplementedError
 
 
-def deficit_days(supply_mwh: np.ndarray, demand_mwh: np.ndarray) -> np.ndarray:
+def deficit_days(supply_mwh: FloatArray, demand_mwh: FloatArray) -> IntArray:
     """Renvoie les indices des jours où l'offre est inférieure à la demande.
 
     Les deux tableaux ont la forme ``(horizon,)``. Renvoie un tableau
@@ -31,7 +31,7 @@ def deficit_days(supply_mwh: np.ndarray, demand_mwh: np.ndarray) -> np.ndarray:
     raise NotImplementedError
 
 
-def daily_power_variation_mw(energy_mwh: np.ndarray) -> np.ndarray:
+def daily_power_variation_mw(energy_mwh: FloatArray) -> FloatArray:
     """Calcule la variation de puissance moyenne d'un jour à l'autre.
 
     ``energy_mwh`` a la forme ``(n_plants, horizon)`` ou ``(horizon,)``.

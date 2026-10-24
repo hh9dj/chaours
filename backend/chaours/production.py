@@ -4,14 +4,14 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from chaours.types import Maintenance, Modulation
+from chaours.types import BoolArray, FloatArray, Maintenance, Modulation
 
 
 def maintenance_mask(
     maintenances: Sequence[Maintenance],
     plant_ids: Sequence[str],
     horizon: int,
-) -> np.ndarray:
+) -> BoolArray:
     """Construit le masque des arrêts.
 
     Renvoie un tableau booléen de forme ``(len(plant_ids), horizon)``.
@@ -20,19 +20,19 @@ def maintenance_mask(
     raise NotImplementedError
 
 
-def modulation_factors(horizon: int) -> np.ndarray:
+def modulation_factors(horizon: int) -> FloatArray:
     """Construit le vecteur de facteurs de charge nominaux.
 
     Renvoie un tableau ``float64`` de forme ``(horizon,)`` rempli de ``1.0``.
     """
-    return np.ones(horizon, np.float16)
+    return np.ones(horizon, dtype=np.float64)
 
 
 def apply_manual_modulation(
-    factors: np.ndarray,
+    factors: FloatArray,
     modulations: Sequence[Modulation],
     plant_ids: Sequence[str],
-) -> np.ndarray:
+) -> FloatArray:
     """Applique les fenêtres de modulation de l'utilisateur.
 
     Chaque fenêtre force ``factor`` sur l'intervalle de jours semi-ouvert
@@ -42,7 +42,7 @@ def apply_manual_modulation(
     raise NotImplementedError
 
 
-def apply_maintenance(factors: np.ndarray, mask: np.ndarray) -> np.ndarray:
+def apply_maintenance(factors: FloatArray, mask: BoolArray) -> FloatArray:
     """Force la production à ``0.0`` sur chaque jour d'arrêt.
 
     ``mask`` a la même forme que ``factors``. La maintenance a la priorité

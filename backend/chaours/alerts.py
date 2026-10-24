@@ -5,7 +5,15 @@ from collections.abc import Mapping, Sequence
 import numpy as np
 
 from chaours.constants import REMIT_THRESHOLD_MW
-from chaours.types import Alert, AlertKind, Plant, PlantResult, Severity
+from chaours.types import (
+    Alert,
+    AlertKind,
+    FloatArray,
+    IntArray,
+    Plant,
+    PlantResult,
+    Severity,
+)
 
 
 def neutronic_alerts(
@@ -21,7 +29,7 @@ def neutronic_alerts(
 
 
 def remit_alerts(
-    variation_mw: np.ndarray,
+    variation_mw: FloatArray,
     threshold_mw: float = REMIT_THRESHOLD_MW,
 ) -> list[Alert]:
     """Signale les variations de puissance au-dessus du seuil REMIT.
@@ -33,7 +41,7 @@ def remit_alerts(
 
 
 def spot_below_usage_value_alerts(
-    spot_prices: np.ndarray,
+    spot_prices: FloatArray,
     plants: Sequence[Plant],
     usage_values_eur_mwh: Mapping[str, float],
 ) -> list[Alert]:
@@ -64,7 +72,7 @@ def spot_below_usage_value_alerts(
     return alerts
 
 
-def deficit_alerts(deficit_day_indices: np.ndarray) -> list[Alert]:
+def deficit_alerts(deficit_day_indices: IntArray) -> list[Alert]:
     """Signale les jours où l'offre nationale est inférieure à la demande.
 
     ``deficit_day_indices`` est un tableau 1D d'indices entiers. Renvoie une

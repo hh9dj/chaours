@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 
+from .types import FloatArray
 
-def remaining_jepp(initial_stock: float, factors: np.ndarray) -> np.ndarray:
+
+def remaining_jepp(initial_stock: float, factors: FloatArray) -> FloatArray:
     """Calcule le stock de combustible restant chaque jour.
 
     ``factors`` est un vecteur 1D de facteurs de charge de forme
@@ -13,20 +15,20 @@ def remaining_jepp(initial_stock: float, factors: np.ndarray) -> np.ndarray:
     return initial_stock - np.cumsum(factors)
 
 
-def depletion_day(remaining_jepp: np.ndarray) -> int | None:
+def depletion_day(remaining_jepp: FloatArray) -> int | None:
     """Renvoie le premier jour où le stock restant est ``<= 0``.
 
     Renvoie ``None`` quand le stock n'est jamais épuisé sur l'horizon.
     """
-    day = np.where(remaining_jepp <= 0)
-    return day[0][0] if day[0].size else None
+    days = np.flatnonzero(remaining_jepp <= 0)
+    return int(days[0]) if days.size else None
 
 
 def stretch_out(
-    factors: np.ndarray,
+    factors: FloatArray,
     initial_stock: float,
     outage_start: int,
-) -> tuple[np.ndarray, bool]:
+) -> tuple[FloatArray, bool]:
     """Dégrade la production pour que le stock tienne jusqu'à l'arrêt prévu.
 
     Si l'épuisement survient avant ``outage_start``, les facteurs de charge
