@@ -10,33 +10,6 @@ from chaours.production import (
 from chaours.types import Maintenance, Modulation, OutageKind
 
 
-def _maintenance(
-    plant_id: str,
-    start_day: int,
-    end_day: int,
-) -> Maintenance:
-    return Maintenance(
-        plant_id=plant_id,
-        kind=OutageKind.ASR,
-        start_day=start_day,
-        end_day=end_day,
-    )
-
-
-def _modulation(
-    plant_id: str,
-    start_day: int,
-    end_day: int,
-    factor: float,
-) -> Modulation:
-    return Modulation(
-        plant_id=plant_id,
-        start_day=start_day,
-        end_day=end_day,
-        factor=factor,
-    )
-
-
 def test_nominal_factors_are_all_ones():
     factors = modulation_factors(4)
 
@@ -48,9 +21,9 @@ def test_nominal_factors_are_all_ones():
 def test_maintenance_mask_marks_outage_days_for_several_plants():
     mask = maintenance_mask(
         (
-            _maintenance("P1", 1, 3),
-            _maintenance("P2", 0, 1),
-            _maintenance("P2", 4, 6),
+            Maintenance("P1", OutageKind.ASR, 1, 3),
+            Maintenance("P2", OutageKind.ASR, 0, 1),
+            Maintenance("P2", OutageKind.ASR, 4, 6),
         ),
         ("P1", "P2"),
         6,
@@ -63,14 +36,18 @@ def test_maintenance_mask_marks_outage_days_for_several_plants():
 
 
 def test_maintenance_mask_respects_semi_open_end_day():
-    mask = maintenance_mask((_maintenance("P1", 2, 4),), ("P1",), 5)
+    mask = maintenance_mask(
+        (Maintenance("P1", OutageKind.ASR, 2, 4),),
+        ("P1",),
+        5,
+    )
 
     assert mask.tolist() == [[False, False, True, True, False]]
 
 
 def test_maintenance_mask_matches_plants_by_id_not_order():
     mask = maintenance_mask(
-        (_maintenance("P2", 1, 3),),
+        (Maintenance("P2", OutageKind.ASR, 1, 3),),
         ("P1", "P2"),
         4,
     )
@@ -93,11 +70,11 @@ def test_maintenance_mask_is_empty_without_maintenances():
 @pytest.mark.parametrize(
     "maintenance",
     [
-        _maintenance("UNKNOWN", 0, 1),
-        _maintenance("P1", -1, 1),
-        _maintenance("P1", 0, 5),
-        _maintenance("P1", 2, 2),
-        _maintenance("P1", 3, 2),
+        Maintenance("UNKNOWN", OutageKind.ASR, 0, 1),
+        Maintenance("P1", OutageKind.ASR, -1, 1),
+        Maintenance("P1", OutageKind.ASR, 0, 5),
+        Maintenance("P1", OutageKind.ASR, 2, 2),
+        Maintenance("P1", OutageKind.ASR, 3, 2),
     ],
 )
 def test_maintenance_mask_rejects_invalid_input(maintenance):
@@ -115,7 +92,7 @@ def test_manual_modulation_applies_only_inside_window_and_to_correct_plant():
 
     result = apply_manual_modulation(
         factors,
-        (_modulation("P2", 1, 3, 0.4),),
+        (Modulation("P2", 1, 3, 0.4),),
         ("P1", "P2"),
     )
 
@@ -131,9 +108,9 @@ def test_manual_modulation_handles_multiple_and_overlapping_windows():
     result = apply_manual_modulation(
         factors,
         (
-            _modulation("P1", 1, 4, 0.5),
-            _modulation("P1", 3, 6, 0.2),
-            _modulation("P2", 0, 2, 0.8),
+            Modulation("P1", 1, 4, 0.5),
+            Modulation("P1", 3, 6, 0.2),
+            Modulation("P2", 0, 2, 0.8),
         ),
         ("P1", "P2"),
     )
@@ -147,14 +124,14 @@ def test_manual_modulation_handles_multiple_and_overlapping_windows():
 @pytest.mark.parametrize(
     "modulation",
     [
-        _modulation("UNKNOWN", 0, 1, 0.5),
-        _modulation("P1", -1, 1, 0.5),
-        _modulation("P1", 0, 5, 0.5),
-        _modulation("P1", 2, 2, 0.5),
-        _modulation("P1", 3, 2, 0.5),
-        _modulation("P1", 0, 1, -0.1),
-        _modulation("P1", 0, 1, 1.1),
-        _modulation("P1", 0, 1, float("nan")),
+        Modulation("UNKNOWN", 0, 1, 0.5),
+        Modulation("P1", -1, 1, 0.5),
+        Modulation("P1", 0, 5, 0.5),
+        Modulation("P1", 2, 2, 0.5),
+        Modulation("P1", 3, 2, 0.5),
+        Modulation("P1", 0, 1, -0.1),
+        Modulation("P1", 0, 1, 1.1),
+        Modulation("P1", 0, 1, float("nan")),
     ],
 )
 def test_manual_modulation_rejects_invalid_input(modulation):
@@ -177,11 +154,15 @@ def test_apply_maintenance_zeros_only_outage_days():
 
 def test_maintenance_wins_when_applied_after_modulation():
     factors = np.ones((1, 4))
-    mask = maintenance_mask((_maintenance("P1", 1, 3),), ("P1",), 4)
+    mask = maintenance_mask(
+        (Maintenance("P1", OutageKind.ASR, 1, 3),),
+        ("P1",),
+        4,
+    )
 
     modulated = apply_manual_modulation(
         factors,
-        (_modulation("P1", 1, 4, 0.5),),
+        (Modulation("P1", 1, 4, 0.5),),
         ("P1",),
     )
     result = apply_maintenance(modulated, mask)
@@ -205,7 +186,7 @@ def test_functions_return_new_arrays_without_mutating_inputs():
 
     modulated = apply_manual_modulation(
         factors,
-        (_modulation("P1", 0, 2, 0.3),),
+        (Modulation("P1", 0, 2, 0.3),),
         ("P1",),
     )
     maintained = apply_maintenance(modulated, mask)
