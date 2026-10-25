@@ -35,7 +35,7 @@ def test_maintenance_mask_marks_outage_days_for_several_plants():
     assert mask[1].tolist() == [True, False, False, False, True, True]
 
 
-def test_maintenance_mask_respects_semi_open_end_day():
+def test_maintenance_mask_excludes_last_day():
     mask = maintenance_mask(
         (Maintenance("P1", OutageKind.ASR, 2, 4),),
         ("P1",),
