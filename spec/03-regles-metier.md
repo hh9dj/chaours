@@ -57,7 +57,7 @@ La VU reste un scalaire par tranche dans le MVP. Si elle devient une série jour
 
 ### C. Modulation manuelle (hypothèse utilisateur)
 
-Principe : baisse volontaire de puissance imposée par l'utilisateur via le frontend.
+Principe : baisse volontaire de puissance imposée par l'utilisateur via le frontend. En l'absence de modulation, le facteur de charge par défaut vaut 1.0 (100 %).
 
 Entrées :
 
