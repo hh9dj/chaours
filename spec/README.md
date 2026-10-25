@@ -10,19 +10,22 @@ CHAOURS permet de tester et valider les calendriers d'arrêt des tranches nuclé
 
 - [01 - Contexte](01-contexte.md) : acteurs, objectifs, cadre institutionnel.
 - [02 - Concepts](02-concepts.md) : JEPP, valeur d'usage, types d'arrêt et contraintes de planning.
-- [03 - Règles métier](03-regles-metier.md) : calculs de trajectoire, arbitrage, modulation, stretch-out, agrégation et filtres réglementaires.
+- [03 - Règles métier](03-regles-metier.md) : calculs de trajectoire, cycles JEPP, arbitrage, modulation manuelle, agrégation et filtres réglementaires.
 - [04 - Fonctionnalités](04-fonctionnalites.md) : exigences fonctionnelles, composants de l'interface et critères d'acceptation.
 
 ## Glossaire
 
 - ASN : Autorité de Sûreté Nucléaire.
 - ASR : Arrêt Simple pour Rechargement, environ 30 à 45 jours.
+- Cycle JEPP : période entre deux rechargements, du jour 0 ou du `end_day` d'un arrêt jusqu'au `end_day` de l'arrêt suivant ou à la fin de l'horizon.
 - DOAAT : Direction Optimisation Amont-Aval et Trading.
 - EIC : Energy Identification Code, code standard européen d'identification d'une tranche.
 - GPM : Pôle Gestion Portefeuille et Marchés.
 - JEPP : Jour Équivalent Pleine Puissance, unité d'énergie consommée par une tranche à 100 % de sa puissance nominale pendant 24 heures.
+- Rechargement : remise du stock JEPP à `initial_jepp` au `end_day` d'un arrêt ASR, VP ou VD.
 - REMIT : règlement européen sur l'intégrité et la transparence du marché de l'énergie.
 - RTE : Réseau de Transport d'Électricité.
+- Stretch-out : prolongation manuelle d'une campagne par une modulation de puissance décidée par l'utilisateur ; ce n'est pas un ajustement automatique du moteur.
 - UMM : Urgent Market Message, message de transparence destiné au marché.
 - VD : Visite Décennale, environ 3 à 6 mois.
 - VP : Visite Partielle, environ 60 à 90 jours.

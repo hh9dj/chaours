@@ -6,32 +6,34 @@ Ce document recense les règles métier à implémenter dans le moteur de calcul
 
 Ces règles constituent le cœur du simulateur interactif. Elles utilisent des opérations vectorielles sur des séries temporelles (tableaux NumPy) pour reduire la latence.
 
-### A. Calculateur de trajectoire (épuisement JEPP)
+### A. Calculateur de trajectoire (cycles JEPP)
 
-Principe : un réacteur dispose d'un stock d'énergie fini mesuré en Jours Équivalent Pleine Puissance (JEPP).
+Principe : un réacteur dispose d'un stock d'énergie fini mesuré en Jours Équivalent Pleine Puissance (JEPP). Le stock se consomme par cycles indépendants.
+
+Un cycle commence au jour 0 ou au `end_day` d'un arrêt, et se termine au `end_day` de l'arrêt suivant ou à la fin de l'horizon. Chaque arrêt ASR, VP ou VD réinitialise le stock à `initial_jepp` à son `end_day`, avant la production de ce jour. La production est nulle pendant `[start_day, end_day)` et le stock reste constant pendant l'arrêt.
 
 Entrées :
 
-- `stock_initial_jepp` (Float) : stock au début de la simulation.
-- `vecteur_production` (Array 1D) : profil de production prévu, facteur de charge entre 0.0 et 1.0 par jour.
+- `stock_initial_jepp` (Float) : stock au début de chaque cycle.
+- `vecteur_production` (Array 1D) : profil de production demandé, facteur de charge entre 0.0 et 1.0 par jour.
+- `arrets` (List) : arrêts de la tranche, utilisés pour découper les cycles et recharger le stock.
 
 Sorties :
 
-- `jepp_restant` (Array 1D) : évolution journalière du stock.
-- `date_epuisement` (Int) : index du jour où le stock atteint 0, si avant l'arrêt.
+- `facteurs_reels` (Array 1D) : facteurs physiquement contraints par le stock.
+- `jepp_restant` (Array 1D) : évolution journalière du stock, borné à 0.
+- `depletion_days` (List[Int]) : premier jour en déficit de chaque cycle concerné, par ordre croissant.
 
 ```python
-# Implémentation via la somme cumulée (cumsum)
-# Cumule l'énergie consommée jour après jour
-jepp_consommes = np.cumsum(vecteur_production)
+# Pour chaque cycle [debut, fin), la consommation demandée est cumulée
+consommation_cumulee = np.cumsum(vecteur_production[debut:fin])
 
-# Calcule le stock restant à chaque instant
-jepp_restant = stock_initial_jepp - jepp_consommes
-
-# Trouve le jour exact où le stock tombe sous 0
-jours_epuises = np.where(jepp_restant <= 0)[0]
-date_epuisement = jours_epuises[0] if len(jours_epuises) > 0 else None
+# Premier jour où la consommation demandée dépasse le stock du cycle
+jours_deficit = np.flatnonzero(consommation_cumulee > stock_initial_jepp)
+jour_deficit = debut + jours_deficit[0] if jours_deficit.size else None
 ```
+
+Ce jour de déficit est le premier jour du cycle qui ne peut pas être servi entièrement. La production réelle y vaut le stock restant, puis 0 jusqu'au rechargement suivant. Une consommation cumulée exactement égale au stock en fin de cycle n'est pas un déficit.
 
 ### B. Surveillance économique (valeur d'usage contre prix spot)
 
@@ -70,28 +72,36 @@ Sorties :
 ```python
 # Utilisation du slicing NumPy pour modifier directement l'intervalle donné
 vecteur_production[jour_debut:jour_fin] = puissance_voulue
-# L'impact sur la date d'épuisement sera automatiquement recalculé par la règle A
+# Le premier jour de déficit du cycle sera recalculé par la règle A
 ```
 
-### D. Stretch-out et reprise (contrainte physique automatique)
+### D. Limite physique du stock et modulation manuelle
 
-Principe : le backend force une baisse de puissance en fin de cycle si l'uranium manque pour atteindre la date d'arrêt à 100 %.
+Principe : le stock JEPP est une limite physique dure. Le moteur ne réduit jamais automatiquement la puissance pour étaler la consommation jusqu'à l'arrêt suivant. Il n'y a pas de stretch-out automatique.
 
 Entrées :
 
-- `jepp_restant` (Array 1D) : stock calculé sans stretch-out.
-- `date_arret_prevue` (Int) : jour fixé pour la maintenance.
+- `facteurs_demandes` (Array 1D) : facteurs issus de la modulation manuelle et du masque de maintenance.
+- `stock_initial_jepp` (Float) : stock disponible au début de chaque cycle.
+- `arrets` (List) : arrêts de la tranche.
 
 Sorties :
 
-- `vecteur_production_corrige` (Array 1D) : profil écrasé avec la puissance dégradée.
+- `facteurs_reels` (Array 1D) : facteurs bornés par le stock.
+- `depletion_days` (List[Int]) : premier jour en déficit de chaque cycle concerné.
+
+Logique :
+
+- Le premier jour où la consommation demandée dépasse le stock est le jour de déficit.
+- Ce jour-là, la production réelle vaut le stock restant, puis 0 jusqu'au rechargement suivant.
+- Une déplétion lève une alerte `NEUTRONIC_ANOMALY` de gravité `CRITICAL`.
+- L'alerte demande à l'utilisateur de corriger la trajectoire par une modulation manuelle avant l'arrêt.
+- Une déplétion sans arrêt futur lève aussi une alerte.
 
 ```python
-# Si on constate que le réacteur tombe à zéro avant la date prévue
-if date_epuisement and date_epuisement < date_arret_prevue:
-    jours_a_couvrir = date_arret_prevue - date_epuisement
-    # On force une baisse de puissance sur la fin de campagne pour faire tenir le stock
-    vecteur_production[date_epuisement - jours_a_couvrir : date_arret_prevue] = puissance_degradee
+# Aucune dégradation automatique : on applique seulement la limite physique
+facteurs_reels[jour_deficit] = stock_restant
+facteurs_reels[jour_deficit + 1 : fin_cycle] = 0.0
 ```
 
 ### E. Agrégation nationale et équilibre réseau
@@ -120,11 +130,30 @@ jours_deficit = np.where(production_totale < demande_nationale)[0]
 
 ### A. Transparence marché (REMIT / UMM)
 
-Entrées : variation de puissance entre deux états de simulation (MW).
+Principe : surveiller la variation absolue de puissance d'un jour à l'autre, par tranche et par jour.
 
-Sorties : alerte (Booléen).
+Entrées :
 
-Logique : si la différence absolue de puissance est supérieure à 100 MW, lever le flag `UMM_requise = True`.
+- `energie_mwh` (Array 2D) : énergie journalière par tranche, en MWh/jour.
+- `arrets` (List) : arrêts planifiés, dont les bornes sont incluses dans la variation.
+
+Sorties :
+
+- `alertes` (List) : une alerte `REMIT_UMM` par tranche et par jour au-dessus du seuil.
+
+Logique :
+
+- Convertir l'énergie en puissance moyenne en divisant par 24, puis calculer la variation absolue entre deux jours consécutifs.
+- Comparer cette variation au seuil de 100 MW.
+- Inclure les bornes des arrêts planifiés dans la variation.
+- Le jour de l'alerte est le second jour de la variation.
+- La gravité est `WARNING`.
+
+```python
+# Variation absolue de puissance moyenne, par tranche
+variation_mw = np.abs(np.diff(energie_mwh / 24.0, axis=1))
+jours_alerte = np.where(variation_mw > 100.0)
+```
 
 ### B. Contraintes du réseau haute tension (RTE)
 
@@ -142,8 +171,8 @@ Sorties : nombre d'équipes mobilisées par jour et alertes de dépassement.
 
 Logique : sommation du nombre d'arrêts en cours à un instant T. Si `arrêts_simultanés > capacité_equipes_edf`, renvoyer un conflit de ressources à l'interface.
 
-## 3. Points à clarifier
+### D. Niveaux de gravité
 
-- Stretch-out : la règle D calcule `jours_a_couvrir` puis utilise cet écart comme décalage de début de slice. L'intention métier est de dégrader la puissance sur les jours couverts par le déficit de stock. Confirmer la formule exacte et la valeur de `puissance_degradee` avant implémentation.
-- Seuil REMIT : la règle 2.A mentionne 100 MW. Confirmer si le seuil porte sur la variation de puissance ou sur la capacité de la tranche.
-- Modulation : confirmer la valeur par défaut de `puissance_modulation` lorsque l'utilisateur ne la fournit pas.
+- `CRITICAL` : alertes neutroniques (`NEUTRONIC_ANOMALY`) et déficits nationaux (`RTE_DEFICIT`).
+- `WARNING` : alertes REMIT (`REMIT_UMM`) et prix spot sous la valeur d'usage (`SPOT_BELOW_USAGE_VALUE`).
+- `INFO` : réservé aux messages informatifs, sans modification des facteurs de charge.

@@ -14,6 +14,16 @@ $$S_i(t+1) = S_i(t) - \frac{P_i(t)}{P_{n,i}} \cdot \Delta t$$
 
 Si une tranche tourne à 50 % de sa puissance nominale pendant 24 heures, elle ne consomme que 0,5 JEPP.
 
+### Cycles JEPP et rechargement
+
+Le stock se consomme par cycles indépendants. Un cycle commence au jour 0 ou au `end_day` d'un arrêt, et se termine au `end_day` de l'arrêt suivant ou à la fin de l'horizon.
+
+Chaque arrêt ASR, VP ou VD réinitialise le stock à `initial_jepp` à son `end_day`. La production est nulle pendant `[start_day, end_day)` et le stock reste constant pendant l'arrêt. Une tranche peut avoir plusieurs arrêts, donc plusieurs cycles, sur l'horizon.
+
+La consommation demandée est cumulée par cycle. Le premier jour où elle dépasse le stock est le jour de déficit. Ce jour-là, la production est limitée au stock restant, puis nulle jusqu'au rechargement suivant. Le stock JEPP est une limite physique dure.
+
+Une déplétion ne déclenche aucun stretch-out automatique. Le moteur lève une alerte `NEUTRONIC_ANOMALY` et l'utilisateur corrige la trajectoire par une modulation manuelle. Une déplétion sans arrêt futur lève aussi une alerte.
+
 ### Arbitrage temporel et valeur d'usage
 
 L'arbitrage temporel consiste à conserver du combustible en été, quand la demande et les prix spot sont bas ou négatifs, pour le restituer en hiver, période de tension et de prix forts.
