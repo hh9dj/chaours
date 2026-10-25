@@ -7,6 +7,41 @@ import numpy as np
 from chaours.types import FloatArray, Maintenance
 
 
+def _consume_cycle(
+    requested_factors: FloatArray,
+    start_day: int,
+    end_day: int,
+    initial_jepp: float,
+) -> tuple[FloatArray, FloatArray, int | None]:
+    """Consomme un cycle ``[start_day, end_day)`` avec un stock initial donné.
+
+    Renvoie les facteurs réels du cycle, le stock en fin de journée et le
+    premier jour en déficit, ou ``None`` si le stock suffit.
+    """
+    requested = requested_factors[start_day:end_day]
+    actual = requested.copy()
+    cumulative = np.cumsum(requested)
+    deficit_indices = np.flatnonzero(cumulative > initial_jepp)
+
+    if deficit_indices.size == 0:
+        remaining = initial_jepp - cumulative
+        return actual, remaining, None
+
+    deficit_offset = int(deficit_indices[0])
+    depletion_day = start_day + deficit_offset
+    if deficit_offset == 0:
+        available = initial_jepp
+    else:
+        available = initial_jepp - cumulative[deficit_offset - 1]
+
+    actual[deficit_offset] = available
+    actual[deficit_offset + 1 :] = 0.0
+    remaining = np.zeros_like(cumulative)
+    remaining[:deficit_offset] = initial_jepp - cumulative[:deficit_offset]
+
+    return actual, remaining, depletion_day
+
+
 def simulate_stock_cycles(
     requested_factors: FloatArray,
     initial_jepp: float,
@@ -15,20 +50,22 @@ def simulate_stock_cycles(
     """Applique la limite physique du stock JEPP sur chaque cycle.
 
     ``requested_factors`` a la forme ``(horizon,)`` et exprime une
-    consommation en JEPP par jour. Il inclut déjà la modulation manuelle.
-    Les jours de maintenance sont forcés à ``0`` même si une valeur non nulle
-    y figure.
+    consommation en JEPP par jour. Il inclut déjà la modulation manuelle et
+    les jours de maintenance y sont déjà mis à ``0.0`` par le pipeline de
+    production. JEPP ne masque pas lui-même les jours d'arrêt.
 
     ``maintenances`` contient les arrêts d'une seule tranche. La séquence peut
     être non triée ; elle est triée par ``start_day``. Les fenêtres sont
-    valides, sans chevauchement et dans l'horizon.
+    valides, sans chevauchement et dans l'horizon. Les arrêts servent
+    uniquement à découper les cycles et à réinitialiser le stock au
+    ``end_day``.
 
     Un cycle va de ``0`` ou du ``end_day`` de l'arrêt précédent jusqu'au
-    ``start_day`` de l'arrêt suivant, ou jusqu'à la fin de l'horizon pour le
-    dernier cycle. Chaque cycle repart de ``initial_jepp``. La production est
-    nulle sur ``[start_day, end_day)`` et le stock y reste constant. Au
-    ``end_day``, le stock est réinitialisé à ``initial_jepp`` avant la
-    production du jour.
+    ``end_day`` de l'arrêt courant, jours d'arrêt inclus, ou jusqu'à la fin
+    de l'horizon pour le dernier cycle. Comme les facteurs demandés y sont
+    déjà nuls, le stock reste constant pendant l'arrêt. Chaque cycle repart
+    de ``initial_jepp`` ; le rechargement est appliqué au ``end_day`` avant
+    la production de ce jour.
 
     Si la consommation demandée d'un cycle dépasse ``initial_jepp``, le
     premier jour en déficit est le premier jour qui ne peut pas être servi
@@ -57,47 +94,29 @@ def simulate_stock_cycles(
 
     sorted_maintenances = sorted(maintenances, key=lambda maintenance: maintenance.start_day)
 
-    stock = initial_jepp
     cycle_start = 0
-
     for maintenance in sorted_maintenances:
-        stock = initial_jepp
-        deficit_started = False
-        for day in range(cycle_start, maintenance.start_day):
-            requested = requested_factors[day]
-            if deficit_started:
-                actual[day] = 0.0
-            elif requested <= stock:
-                actual[day] = requested
-                stock -= requested
-            else:
-                actual[day] = stock
-                stock = 0.0
-                deficit_started = True
-                depletion_days.append(day)
-            remaining[day] = stock
-
-        for day in range(maintenance.start_day, maintenance.end_day):
-            actual[day] = 0.0
-            remaining[day] = stock
-
-        stock = initial_jepp
+        cycle_actual, cycle_remaining, depletion_day = _consume_cycle(
+            requested_factors,
+            cycle_start,
+            maintenance.end_day,
+            initial_jepp,
+        )
+        actual[cycle_start : maintenance.end_day] = cycle_actual
+        remaining[cycle_start : maintenance.end_day] = cycle_remaining
+        if depletion_day is not None:
+            depletion_days.append(depletion_day)
         cycle_start = maintenance.end_day
 
-    stock = initial_jepp
-    deficit_started = False
-    for day in range(cycle_start, horizon):
-        requested = requested_factors[day]
-        if deficit_started:
-            actual[day] = 0.0
-        elif requested <= stock:
-            actual[day] = requested
-            stock -= requested
-        else:
-            actual[day] = stock
-            stock = 0.0
-            deficit_started = True
-            depletion_days.append(day)
-        remaining[day] = stock
+    cycle_actual, cycle_remaining, depletion_day = _consume_cycle(
+        requested_factors,
+        cycle_start,
+        horizon,
+        initial_jepp,
+    )
+    actual[cycle_start:horizon] = cycle_actual
+    remaining[cycle_start:horizon] = cycle_remaining
+    if depletion_day is not None:
+        depletion_days.append(depletion_day)
 
     return actual, remaining, tuple(depletion_days)
