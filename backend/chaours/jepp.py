@@ -1,43 +1,44 @@
 from __future__ import annotations
 
-import numpy as np
+from collections.abc import Sequence
 
-from chaours.types import FloatArray
-
-
-def remaining_jepp(initial_stock: float, factors: FloatArray) -> FloatArray:
-    """Calcule le stock de combustible restant chaque jour.
-
-    ``factors`` est un vecteur 1D de facteurs de charge de forme
-    ``(horizon,)``. Renvoie un tableau ``float64`` de forme ``(horizon,)``
-    où chaque valeur vaut ``initial_stock - np.cumsum(factors)``.
-    """
-    return initial_stock - np.cumsum(factors)
+from chaours.types import FloatArray, Maintenance
 
 
-def depletion_day(remaining_jepp: FloatArray) -> int | None:
-    """Renvoie le premier jour où le stock restant est ``<= 0``.
+def simulate_stock_cycles(
+    requested_factors: FloatArray,
+    initial_jepp: float,
+    maintenances: Sequence[Maintenance],
+) -> tuple[FloatArray, FloatArray, tuple[int, ...]]:
+    """Applique la limite physique du stock JEPP sur chaque cycle.
 
-    Renvoie ``None`` quand le stock n'est jamais épuisé sur l'horizon.
-    """
-    days = np.flatnonzero(remaining_jepp <= 0)
-    return int(days[0]) if days.size else None
+    ``requested_factors`` a la forme ``(horizon,)`` et exprime une
+    consommation en JEPP par jour. Il inclut déjà la modulation manuelle.
+    Les jours de maintenance sont forcés à ``0`` même si une valeur non nulle
+    y figure.
 
+    ``maintenances`` contient les arrêts d'une seule tranche, triés par
+    ``start_day``. Les fenêtres sont valides, sans chevauchement et dans
+    l'horizon.
 
-def stretch_out(
-    factors: FloatArray,
-    initial_stock: float,
-    outage_start: int,
-) -> tuple[FloatArray, bool]:
-    """Dégrade la production pour que le stock tienne jusqu'à l'arrêt prévu.
+    Un cycle va de ``0`` ou du ``end_day`` de l'arrêt précédent jusqu'au
+    ``start_day`` de l'arrêt suivant, ou jusqu'à la fin de l'horizon pour le
+    dernier cycle. Chaque cycle repart de ``initial_jepp``. La production est
+    nulle sur ``[start_day, end_day)`` et le stock y reste constant. Au
+    ``end_day``, le stock est réinitialisé à ``initial_jepp`` avant la
+    production du jour.
 
-    Si l'épuisement survient avant ``outage_start``, les facteurs de charge
-    sur ``[0, outage_start)`` sont mis à l'échelle pour que la consommation
-    cumulée égale ``initial_stock``. L'énergie est conservée et la forme du
-    profil de production est préservée.
+    Si la consommation demandée d'un cycle dépasse ``initial_jepp``, le
+    premier jour en déficit est le premier jour qui ne peut pas être servi
+    entièrement. Ce jour-là, la production réelle vaut le stock restant.
+    Ensuite, la production réelle vaut ``0`` jusqu'au rechargement suivant.
+    Une consommation cumulée exactement égale à ``initial_jepp`` en fin de
+    cycle n'est pas un déficit.
 
-    Renvoie le tableau de facteurs de charge corrigé et un indicateur à
-    ``True`` quand le stretch-out a été appliqué. L'indicateur vaut ``False``
-    quand aucune correction n'est nécessaire.
+    Renvoie ``(actual_factors, remaining_jepp, depletion_days)``.
+    ``remaining_jepp`` est le stock en fin de journée, borné à ``0``.
+    ``depletion_days`` contient le premier jour en déficit de chaque cycle
+    concerné, par ordre croissant. Aucune dégradation automatique ni
+    stretch-out n'est appliqué au-delà de la limite physique du stock.
     """
     raise NotImplementedError

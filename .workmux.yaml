@@ -1,0 +1,7 @@
+base_branch: backend
+
+post_create:
+  - just backend-setup
+
+pre_merge:
+  - just backend-check

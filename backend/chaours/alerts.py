@@ -10,6 +10,7 @@ from chaours.types import (
     AlertKind,
     FloatArray,
     IntArray,
+    Maintenance,
     Plant,
     PlantResult,
     Severity,
@@ -18,24 +19,34 @@ from chaours.types import (
 
 def neutronic_alerts(
     plant_results: Sequence[PlantResult],
-    outage_starts: Mapping[str, int],
+    maintenances: Sequence[Maintenance],
 ) -> list[Alert]:
     """Signale les tranches dont le stock est épuisé avant l'arrêt prévu.
 
-    Compare ``PlantResult.depletion_day`` à ``outage_starts``.
-    Renvoie une alerte ``NEUTRONIC_ANOMALY`` par tranche concernée.
+    Parcourt les tranches dans l'ordre reçu. Pour chaque jour de
+    ``PlantResult.depletion_days``, cherche le prochain ``start_day`` d'arrêt
+    strictement supérieur à ce jour pour la même tranche. Renvoie une alerte
+    ``NEUTRONIC_ANOMALY`` par jour de déplétion, de gravité ``CRITICAL``. Le
+    message est en français et demande une modulation manuelle. Il cite le
+    jour de début du prochain arrêt, ou indique qu'aucun arrêt n'est prévu.
     """
     raise NotImplementedError
 
 
 def remit_alerts(
     variation_mw: FloatArray,
+    plant_ids: Sequence[str],
     threshold_mw: float = REMIT_THRESHOLD_MW,
 ) -> list[Alert]:
     """Signale les variations de puissance au-dessus du seuil REMIT.
 
-    ``variation_mw`` est un tableau 1D de forme ``(horizon - 1,)``. Renvoie
-    une alerte ``REMIT_UMM`` par jour où ``abs(variation_mw) > threshold_mw``.
+    ``variation_mw`` a la forme ``(n_plants, horizon - 1)`` et ``plant_ids``
+    a la longueur ``n_plants``. Renvoie une alerte ``REMIT_UMM`` par tranche
+    et par jour où ``abs(variation_mw[plant_index, day_index]) >
+    threshold_mw``. Le jour de l'alerte vaut ``day_index + 1``, soit le
+    second jour de la différence. L'alerte porte l'identifiant de la
+    tranche, une gravité ``WARNING``, et inclut les bornes des arrêts
+    planifiés.
     """
     raise NotImplementedError
 

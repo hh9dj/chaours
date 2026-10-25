@@ -127,23 +127,23 @@ class PlantResult:
     """Trajectoire calculée pour une tranche.
 
     - ``plant_id`` : identifiant de la tranche.
-    - ``production_factors`` : facteurs de charge de forme
-      ``(horizon_days,)``, entre ``0.0`` et ``1.0``.
+    - ``production_factors`` : facteurs de charge physiquement contraints,
+      de forme ``(horizon_days,)``, entre ``0.0`` et ``1.0``. Ce ne sont pas
+      les facteurs demandés : la limite physique du stock peut les réduire.
     - ``energy_mwh`` : énergie journalière de forme ``(horizon_days,)``,
       en MWh/jour.
-    - ``remaining_jepp`` : stock restant de forme ``(horizon_days,)``,
-      en JEPP.
-    - ``depletion_day`` : premier jour où le stock est ``<= 0``, ou ``None``.
-    - ``stretch_out_applied`` : ``True`` quand la production a été dégradée
-      pour tenir jusqu'à l'arrêt.
+    - ``remaining_jepp`` : stock en fin de journée, de forme
+      ``(horizon_days,)``, en JEPP, borné à ``0``. Les rechargements sont
+      reflétés aux points de recharge.
+    - ``depletion_days`` : premier jour limité par le stock de chaque cycle
+      concerné, par ordre croissant.
     """
 
     plant_id: str
     production_factors: FloatArray
     energy_mwh: FloatArray
     remaining_jepp: FloatArray
-    depletion_day: int | None
-    stretch_out_applied: bool
+    depletion_days: tuple[int, ...]
 
 
 @dataclass(frozen=True)

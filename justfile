@@ -8,6 +8,9 @@ default:
 setup:
     pnpm -C {{frontend}} install
 
+backend-setup:
+    uv sync --directory backend
+
 dev:
     pnpm -C {{frontend}} dev
 
