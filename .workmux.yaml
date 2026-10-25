@@ -1,7 +1,7 @@
 base_branch: backend
 
 post_create:
-  - just backend-setup
+  - direnv exec . just backend-setup
 
 pre_merge:
-  - just backend-check
+  - direnv exec . just backend-check
