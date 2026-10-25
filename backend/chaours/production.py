@@ -7,13 +7,6 @@ import numpy as np
 from chaours.types import BoolArray, FloatArray, Maintenance, Modulation
 
 
-def _plant_index(plant_ids: Sequence[str], plant_id: str) -> int:
-    for index, candidate in enumerate(plant_ids):
-        if candidate == plant_id:
-            return index
-    raise ValueError(f"unknown plant id: {plant_id!r}")
-
-
 def _validate_window(start_day: int, end_day: int, horizon: int) -> None:
     if start_day < 0 or end_day > horizon or start_day >= end_day:
         raise ValueError(
@@ -23,23 +16,21 @@ def _validate_window(start_day: int, end_day: int, horizon: int) -> None:
 
 def maintenance_mask(
     maintenances: Sequence[Maintenance],
-    plant_ids: Sequence[str],
     horizon: int,
 ) -> BoolArray:
-    """Construit le masque des arrêts.
+    """Construit le masque des arrêts d'une tranche.
 
-    Renvoie un tableau booléen de forme ``(len(plant_ids), horizon)``.
-    Une cellule ``True`` marque un jour où la tranche est arrêtée.
+    Renvoie un tableau booléen de forme ``(horizon,)``. Une cellule ``True``
+    marque un jour où la tranche est arrêtée.
     """
     if horizon <= 0:
         raise ValueError(f"horizon must be positive, got {horizon}")
 
-    mask = np.zeros((len(plant_ids), horizon), dtype=np.bool_)
+    mask = np.zeros(horizon, dtype=np.bool_)
 
     for maintenance in maintenances:
-        plant_index = _plant_index(plant_ids, maintenance.plant_id)
         _validate_window(maintenance.start_day, maintenance.end_day, horizon)
-        mask[plant_index, maintenance.start_day : maintenance.end_day] = True
+        mask[maintenance.start_day : maintenance.end_day] = True
 
     return mask
 
@@ -55,35 +46,28 @@ def modulation_factors(horizon: int) -> FloatArray:
 def apply_manual_modulation(
     factors: FloatArray,
     modulations: Sequence[Modulation],
-    plant_ids: Sequence[str],
 ) -> FloatArray:
     """Applique les fenêtres de modulation de l'utilisateur.
 
     Chaque fenêtre force ``factor`` sur l'intervalle de jours semi-ouvert
-    ``[start_day, end_day)``. Renvoie un nouveau tableau de même forme que
-    ``factors``.
+    ``[start_day, end_day)``. ``factors`` a la forme ``(horizon,)`` et
+    appartient à une seule tranche. Renvoie un nouveau tableau de même forme.
     """
-    if factors.ndim != 2:
-        raise ValueError(f"factors must be two-dimensional, got {factors.ndim}")
-    if factors.shape[0] != len(plant_ids):
+    if factors.ndim != 1:
         raise ValueError(
-            "factors rows must match plant ids: "
-            f"{factors.shape[0]} != {len(plant_ids)}"
+            f"factors must be one-dimensional, got {factors.ndim}"
         )
 
-    horizon = factors.shape[1]
+    horizon = factors.shape[0]
     result = factors.copy()
 
     for modulation in modulations:
-        plant_index = _plant_index(plant_ids, modulation.plant_id)
         _validate_window(modulation.start_day, modulation.end_day, horizon)
         if not 0.0 <= modulation.factor <= 1.0:
             raise ValueError(
                 f"modulation factor out of range: {modulation.factor}"
             )
-        result[plant_index, modulation.start_day : modulation.end_day] = (
-            modulation.factor
-        )
+        result[modulation.start_day : modulation.end_day] = modulation.factor
 
     return result
 

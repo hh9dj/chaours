@@ -11,7 +11,6 @@ def _factors(*values: float) -> FloatArray:
 
 def _maintenance(start_day: int, end_day: int) -> Maintenance:
     return Maintenance(
-        plant_id="P1",
         kind=OutageKind.ASR,
         start_day=start_day,
         end_day=end_day,

@@ -65,6 +65,8 @@ Entrées :
 - `puissance_voulue` (Float) : facteur de charge désiré, par exemple 0.6 pour 60 %.
 - `vecteur_production` (Array 1D) : profil existant.
 
+Les arrêts et les modulations sont portés par l'entrée de tranche du scénario à laquelle ils appartiennent. Ils ne dupliquent pas l'identifiant de tranche.
+
 Sorties :
 
 - `vecteur_production` mis à jour (Array 1D).

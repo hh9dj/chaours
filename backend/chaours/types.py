@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 import numpy as np
@@ -49,7 +49,7 @@ class Severity(str, Enum):
 
 @dataclass(frozen=True)
 class Plant:
-    """Configuration d'une tranche nucléaire.
+    """Configuration statique d'une tranche nucléaire.
 
     - ``id`` : identifiant interne de la tranche.
     - ``eic_code`` : code EIC européen.
@@ -67,13 +67,11 @@ class Plant:
 class Maintenance:
     """Arrêt de maintenance planifié pour une tranche.
 
-    - ``plant_id`` : identifiant de la tranche concernée.
     - ``kind`` : type d'arrêt (``ASR``, ``VP`` ou ``VD``).
     - ``start_day`` : premier jour de l'arrêt, inclus.
     - ``end_day`` : premier jour après l'arrêt, exclu.
     """
 
-    plant_id: str
     kind: OutageKind
     start_day: int
     end_day: int
@@ -83,16 +81,54 @@ class Maintenance:
 class Modulation:
     """Fenêtre de modulation manuelle imposée par l'utilisateur.
 
-    - ``plant_id`` : identifiant de la tranche concernée.
     - ``start_day`` : premier jour de la modulation, inclus.
     - ``end_day`` : premier jour après la modulation, exclu.
     - ``factor`` : facteur de charge cible entre ``0.0`` et ``1.0``.
     """
 
-    plant_id: str
     start_day: int
     end_day: int
     factor: float
+
+
+@dataclass
+class Simulation:
+    """Tranche nucléaire avec ses arrêts et ses modulations.
+
+    - ``plant`` : configuration statique de la tranche.
+    - ``maintenances`` : arrêts planifiés de cette tranche.
+    - ``modulations`` : modulations manuelles de cette tranche.
+
+    Les listes sont mutables pour permettre la construction progressive du
+    scénario. Elles appartiennent à cette instance et ne sont jamais partagées
+    entre deux scénarios.
+    """
+
+    plant: Plant
+    maintenances: list[Maintenance] = field(default_factory=list)
+    modulations: list[Modulation] = field(default_factory=list)
+
+    def add_maintenance(
+        self,
+        kind: OutageKind,
+        start_day: int,
+        end_day: int,
+    ) -> Maintenance:
+        """Ajoute un arrêt à cette tranche et le renvoie."""
+        maintenance = Maintenance(kind, start_day, end_day)
+        self.maintenances.append(maintenance)
+        return maintenance
+
+    def add_modulation(
+        self,
+        start_day: int,
+        end_day: int,
+        factor: float,
+    ) -> Modulation:
+        """Ajoute une modulation à cette tranche et la renvoie."""
+        modulation = Modulation(start_day, end_day, factor)
+        self.modulations.append(modulation)
+        return modulation
 
 
 @dataclass
@@ -107,9 +143,12 @@ class Scenario:
     - ``usage_values_eur_mwh`` : valeur d'usage en €/MWh, un scalaire
       statique par tranche, indexé par identifiant de tranche. Ce n'est pas
       une série journalière dans le MVP.
+    - ``plants`` : tranches du scénario, chacune avec ses arrêts et ses
+      modulations.
 
-    Le scénario est mutable pour le POC : ses champs et la table de valeurs
-    d'usage peuvent être modifiés directement.
+    Le scénario est mutable pour le POC : ses champs, sa liste de tranches
+    et les listes de calendriers portées par chaque tranche peuvent être
+    modifiés directement.
     """
 
     scenario_id: str
@@ -117,9 +156,27 @@ class Scenario:
     spot_prices: FloatArray
     demand_mwh: FloatArray
     usage_values_eur_mwh: dict[str, float]
-    plants: tuple[Plant, ...]
-    maintenances: tuple[Maintenance, ...] = ()
-    modulations: tuple[Modulation, ...] = ()
+    plants: list[Simulation] = field(default_factory=list)
+
+    def add_plant(self, plant: Plant) -> Simulation:
+        """Ajoute une tranche au scénario et renvoie son entrée."""
+        entry = Simulation(plant)
+        self.plants.append(entry)
+        return entry
+
+    @property
+    def maintenances_by_plant(
+        self,
+    ) -> dict[str, tuple[Maintenance, ...]]:
+        """Renvoie les arrêts de chaque tranche, indexés par identifiant."""
+        return {entry.plant.id: tuple(entry.maintenances) for entry in self.plants}
+
+    @property
+    def modulations_by_plant(
+        self,
+    ) -> dict[str, tuple[Modulation, ...]]:
+        """Renvoie les modulations de chaque tranche, par identifiant."""
+        return {entry.plant.id: tuple(entry.modulations) for entry in self.plants}
 
 
 @dataclass(frozen=True)
@@ -176,7 +233,9 @@ class SimulationResult:
     - ``demand_mwh`` : demande nationale de forme ``(horizon_days,)``,
       en MWh/jour.
     - ``deficit_days`` : indices des jours en déficit.
-    - ``alerts`` : alertes produites par le moteur.
+    - ``alerts`` : alertes produites par le moteur, dans un ordre
+      déterministe : neutroniques, REMIT, déficits, puis prix spot sous la
+      valeur d'usage.
     """
 
     scenario_id: str

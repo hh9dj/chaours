@@ -14,6 +14,7 @@ from chaours.types import (
     PlantResult,
     Scenario,
     Severity,
+    Simulation,
     SimulationResult,
 )
 
@@ -31,5 +32,6 @@ __all__ = [
     "PlantResult",
     "Scenario",
     "Severity",
+    "Simulation",
     "SimulationResult",
 ]

@@ -6,8 +6,8 @@
   - Accept a dynamic `horizon_days` parameter (defaulting to 365) to support both 1-year and variable horizons.
   - Initialize 1D arrays for Spot prices (`float64`) and national demand (`float64`).
   - Store each plant's initial JEPP stock and nominal power ($MW$).
-  - Store maintenances (ASR, VP, VD) and manual modulations as typed records, without assuming one stop per plant.
-  - Compose the full scenario from plants, maintenances, modulations, and simulation parameters.
+  - Store maintenances (ASR, VP, VD) and manual modulations as typed records owned by each scenario plant entry, without assuming one stop per plant.
+  - Compose the full scenario from scenario-scoped plant entries, each carrying its plant configuration, maintenances, and modulations, plus simulation parameters.
 
 - **Step 1.2: Economic Monitoring (Spot Price vs Usage Value)**
   - Keep the Usage Value (VU) as a static scalar per plant for the MVP. EDF computes it as a dynamic time series in production, but the scalar keeps the frontend to one input per reactor.
@@ -60,13 +60,15 @@
 - **Step 2.1: Input Schemas**
   - `PlantConfig`: `id`, `eic_code`, `nominal_power_mw`, `initial_jepp`.
 
-  - `MaintenanceSchedule`: `plant_id`, `kind` (ASR, VP, VD), `start_day`, `end_day`.
+  - `MaintenanceSchedule`: `kind` (ASR, VP, VD), `start_day`, `end_day`.
 
-  - `ModulationConsigne`: `plant_id`, `start_day`, `end_day`, `factor` ($0.0 - 1.0$).
+  - `ModulationConsigne`: `start_day`, `end_day`, `factor` ($0.0 - 1.0$).
+
+  - `ScenarioPlant`: `plant`, `maintenances`, `modulations`. The entry owns its schedules, so maintenance and modulation records do not repeat `plant_id`.
 
   - `SimulationParameters`: `scenario_id`, `horizon_days`, `spot_prices`, `demand_mwh`, `usage_values_eur_mwh`.
 
-  - The full input schema composes `plants`, `maintenances`, `modulations`, and `parameters`, matching the engine `Scenario` contract field by field.
+  - The full input schema composes `plants` as a list of `ScenarioPlant` entries plus `parameters`, matching the engine `Scenario` contract field by field.
 
 - **Step 2.2: Output & Alert Schemas**
   - `PlantTrajectory`: `plant_id`, `production_factors`, `energy_mwh`, `remaining_jepp`, `depletion_days`.
@@ -94,6 +96,8 @@
 
   - `ModulationModel`: Foreign key to `SimulationScenario` and `PlantModel`, start day, end day, target ratio.
 
+  - Persistence rows keep `plant_id` as a foreign key even though engine schedule records are ownerless and nested under a scenario plant entry.
+
 - **Step 3.2: SQLite Database Initialization**
   - Set up lightweight SQLite storage (`chaours.db`) using SQLModel/SQLAlchemy engine.
   - Write database migrations or auto-table creation scripts (`SQLModel.metadata.create_all`).
@@ -117,8 +121,8 @@
   - `DELETE /simulations/{simulation_id}`: Clean up old scenarios.
 
 - **Step 4.3: Configuration Endpoints**
-  - `PUT /simulations/{simulation_id}/maintenances`: Update or move maintenance blocks (ASR/VP/VD).
-  - `PUT /simulations/{simulation_id}/modulations`: Update manual user modulation inputs.
+  - `PUT /simulations/{simulation_id}/plants/{plant_id}/maintenances`: Update or move maintenance blocks (ASR/VP/VD) for one plant.
+  - `PUT /simulations/{simulation_id}/plants/{plant_id}/modulations`: Update manual user modulation inputs for one plant.
 
 - **Step 4.4: The Execution Endpoint (`POST /simulations/{simulation_id}/run`)**
   - Fetch scenario state from SQLite.

@@ -31,6 +31,9 @@ backend-check: backend-test backend-typecheck
 backend-run:
     uv run --directory backend python -m chaours
 
+backend-benchmark:
+    uv run --directory backend python -m chaours --benchmark
+
 check: test build backend-check
 
 clean:
