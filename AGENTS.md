@@ -18,4 +18,5 @@ CHAOURS (Nuclear Planing) is an interactive decision-support simulator for sched
   - Write all text and content in French.
   - Target desktop browsers.
   - Keep the interface simple and straightforward.
-- Do not merge parallel worktree changes automatically. User need to review and challenge them with hunk, then wait for the user's signal to merge.
+- Do not merge parallel worktree changes automatically. The user must review and challenge them with hunk, then give the signal to merge.
+- When applying a change, give purpose + explanation of changes for each file modified in your last conversation message.
