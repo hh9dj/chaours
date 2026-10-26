@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Sequence
 
 import numpy as np
 
@@ -25,87 +24,10 @@ from chaours.production import (
 )
 from chaours.types import (
     Alert,
-    FloatArray,
-    Maintenance,
     PlantResult,
     Scenario,
     SimulationResult,
 )
-
-
-def _validate_scenario(
-    scenario: Scenario,
-) -> tuple[FloatArray, FloatArray, tuple[str, ...]]:
-    horizon = scenario.horizon_days
-    if horizon <= 0:
-        raise ValueError(f"horizon_days must be positive, got {horizon}")
-
-    spot_prices = scenario.spot_prices
-    demand_mwh = scenario.demand_mwh
-
-    if spot_prices.ndim != 1 or spot_prices.shape[0] != horizon:
-        raise ValueError(
-            "spot_prices must be one-dimensional with length "
-            f"{horizon}, got shape {spot_prices.shape}"
-        )
-    if demand_mwh.ndim != 1 or demand_mwh.shape[0] != horizon:
-        raise ValueError(
-            "demand_mwh must be one-dimensional with length "
-            f"{horizon}, got shape {demand_mwh.shape}"
-        )
-
-    entries = scenario.plants
-    if not entries:
-        raise ValueError("scenario must contain at least one plant")
-
-    plant_ids = tuple(entry.plant.id for entry in entries)
-    if len(set(plant_ids)) != len(plant_ids):
-        raise ValueError("plant ids must be unique")
-
-    for entry in entries:
-        plant = entry.plant
-        if plant.nominal_power_mw < 0.0:
-            raise ValueError(
-                f"negative nominal power for plant {plant.id!r}: "
-                f"{plant.nominal_power_mw}"
-            )
-        if plant.initial_jepp < 0.0:
-            raise ValueError(
-                f"negative initial JEPP for plant {plant.id!r}: "
-                f"{plant.initial_jepp}"
-            )
-
-    if set(scenario.usage_values_eur_mwh) != set(plant_ids):
-        raise ValueError(
-            "usage_values_eur_mwh keys must exactly match plant ids: "
-            f"{sorted(scenario.usage_values_eur_mwh)} != {sorted(plant_ids)}"
-        )
-
-    for entry in entries:
-        _validate_no_overlapping_stops(
-            entry.plant.id,
-            entry.maintenances,
-        )
-
-    return spot_prices, demand_mwh, plant_ids
-
-
-def _validate_no_overlapping_stops(
-    plant_id: str,
-    maintenances: Sequence[Maintenance],
-) -> None:
-    ordered = sorted(
-        maintenances,
-        key=lambda maintenance: maintenance.start_day,
-    )
-    for previous, current in zip(ordered, ordered[1:]):
-        if current.start_day < previous.end_day:
-            raise ValueError(
-                "overlapping stops for plant "
-                f"{plant_id!r}: [{previous.start_day}, "
-                f"{previous.end_day}) and [{current.start_day}, "
-                f"{current.end_day})"
-            )
 
 
 class NucliEngine:
@@ -123,17 +45,20 @@ class NucliEngine:
     6. alertes neutroniques, REMIT, déficits et prix spot sous la valeur
        d'usage
 
-    Le moteur est sans état : chaque exécution reçoit un ``Scenario`` complet.
+    Le moteur est sans état : chaque exécution reçoit un ``Scenario`` complet
+    déjà validé par Pydantic.
     """
 
     def run(self, scenario: Scenario) -> SimulationResult:
         """Exécute une simulation et renvoie les trajectoires et les alertes."""
         start = time.perf_counter()
 
-        spot_prices, demand_mwh, plant_ids = _validate_scenario(scenario)
+        spot_prices = np.asarray(scenario.spot_prices, dtype=np.float64)
+        demand_mwh = np.asarray(scenario.demand_mwh, dtype=np.float64)
         horizon = scenario.horizon_days
         entries = scenario.plants
         plant_count = len(entries)
+        plant_ids = tuple(entry.plant.id for entry in entries)
 
         nominal_factors = np.ones((plant_count, horizon), dtype=np.float64)
         requested_factors = np.empty_like(nominal_factors)
@@ -172,16 +97,16 @@ class NucliEngine:
         deficit_day_indices = deficit_days(supply_mwh, demand_mwh)
         variation_mw = daily_power_variation_mw(energy_by_plant)
 
-        plant_results = tuple(
+        plant_results = [
             PlantResult(
                 plant_id=entry.plant.id,
-                production_factors=actual_factors[plant_index],
-                energy_mwh=energy_by_plant[plant_index],
-                remaining_jepp=remaining_jepp[plant_index],
-                depletion_days=depletion_by_plant[plant_index],
+                production_factors=actual_factors[plant_index].tolist(),
+                energy_mwh=energy_by_plant[plant_index].tolist(),
+                remaining_jepp=remaining_jepp[plant_index].tolist(),
+                depletion_days=list(depletion_by_plant[plant_index]),
             )
             for plant_index, entry in enumerate(entries)
-        )
+        ]
 
         alerts: list[Alert] = []
         alerts.extend(
@@ -206,8 +131,8 @@ class NucliEngine:
             scenario_id=scenario.scenario_id,
             execution_time_ms=execution_time_ms,
             plants=plant_results,
-            national_supply_mwh=supply_mwh,
-            demand_mwh=demand_mwh,
-            deficit_days=deficit_day_indices,
-            alerts=tuple(alerts),
+            national_supply_mwh=supply_mwh.tolist(),
+            demand_mwh=demand_mwh.tolist(),
+            deficit_days=deficit_day_indices.tolist(),
+            alerts=alerts,
         )

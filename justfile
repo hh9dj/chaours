@@ -34,6 +34,9 @@ backend-run:
 backend-benchmark:
     uv run --directory backend python -m chaours --benchmark
 
+backend-api:
+    uv run --directory backend uvicorn chaours.api.main:app --reload
+
 check: test build backend-check
 
 clean:

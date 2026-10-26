@@ -19,3 +19,16 @@ CHAOURS est un simulateur interactif d'aide à la décision. Il permet de :
 - calculer la capacité physique des tranches et des centrales à partir de l'épuisement du combustible (JEPP) ;
 - prendre en compte l'arbitrage temporel de la vente entre la valeur d'usage (VU) et le prix spot ;
 - vérifier que la production disponible couvre la demande nationale.
+
+## Application web
+
+CHAOURS est une application web organisée autour de simulations isolées :
+
+- le dashboard liste les simulations sous forme de cartes et permet d'en créer une nouvelle ;
+- une simulation contient un horizon, des séries journalières nationales et plusieurs tranches ;
+- chaque tranche possède un calendrier d'arrêts et de modulations ;
+- une timeline par tranche montre la production, les arrêts, les modulations et le niveau de JEPP ;
+- les alertes propres à une tranche sont affichées sur sa timeline ;
+- les alertes nationales sont regroupées dans une barre latérale dédiée à la simulation.
+
+Les modifications d'une simulation sont isolées des autres simulations. Les résultats de calcul, comme les alertes, les jours de déficit, les jours d'épuisement JEPP et l'offre journalière, ne sont pas persistés : ils sont recalculés à l'ouverture de la simulation et après chaque modification.

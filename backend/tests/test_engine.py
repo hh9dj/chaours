@@ -1,8 +1,6 @@
-from dataclasses import replace
-from typing import Any
+from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from chaours.engine import NucliEngine
 from chaours.types import (
@@ -35,39 +33,53 @@ def _entry(
     modulations: tuple[Modulation, ...] = (),
 ) -> Simulation:
     return Simulation(
-        plant if plant is not None else _plant(),
-        list(maintenances),
-        list(modulations),
+        plant=plant if plant is not None else _plant(),
+        maintenances=list(maintenances),
+        modulations=list(modulations),
     )
 
 
-def _scenario(**overrides: Any) -> Scenario:
-    horizon = 4
-    base = Scenario(
-        scenario_id="test",
-        horizon_days=horizon,
-        spot_prices=np.full(horizon, 80.0),
-        demand_mwh=np.zeros(horizon),
-        usage_values_eur_mwh={"P1": 60.0},
-        plants=[_entry()],
+def _scenario(
+    horizon_days: int = 4,
+    spot_prices: list[float] | None = None,
+    demand_mwh: list[float] | None = None,
+    usage_values_eur_mwh: dict[str, float] | None = None,
+    plants: list[Simulation] | None = None,
+) -> Scenario:
+    return Scenario(
+        name="test",
+        horizon_days=horizon_days,
+        spot_prices=(
+            spot_prices
+            if spot_prices is not None
+            else [80.0] * horizon_days
+        ),
+        demand_mwh=(
+            demand_mwh if demand_mwh is not None else [0.0] * horizon_days
+        ),
+        usage_values_eur_mwh=(
+            usage_values_eur_mwh
+            if usage_values_eur_mwh is not None
+            else {"P1": 60.0}
+        ),
+        plants=plants if plants is not None else [_entry()],
     )
-    return replace(base, **overrides)
 
 
 def _maintenance(start_day: int, end_day: int) -> Maintenance:
-    return Maintenance(OutageKind.ASR, start_day, end_day)
+    return Maintenance(kind=OutageKind.ASR, start_day=start_day, end_day=end_day)
 
 
 def test_engine_runs_full_pipeline_in_order():
     scenario = _scenario(
         horizon_days=5,
-        spot_prices=np.full(5, 80.0),
-        demand_mwh=np.zeros(5),
+        spot_prices=[80.0] * 5,
+        demand_mwh=[0.0] * 5,
         plants=[
             _entry(
                 _plant(initial_jepp=100.0),
                 maintenances=(_maintenance(2, 3),),
-                modulations=(Modulation(1, 4, 0.5),),
+                modulations=(Modulation(start_day=1, end_day=4, factor=0.5),),
             )
         ],
     )
@@ -83,8 +95,8 @@ def test_engine_runs_full_pipeline_in_order():
 def test_engine_returns_one_result_per_plant():
     scenario = _scenario(
         horizon_days=3,
-        spot_prices=np.full(3, 80.0),
-        demand_mwh=np.zeros(3),
+        spot_prices=[80.0] * 3,
+        demand_mwh=[0.0] * 3,
         usage_values_eur_mwh={"P1": 60.0, "P2": 60.0},
         plants=[
             _entry(_plant("P1")),
@@ -100,8 +112,8 @@ def test_engine_returns_one_result_per_plant():
 def test_engine_returns_national_supply_and_deficits():
     scenario = _scenario(
         horizon_days=3,
-        spot_prices=np.full(3, 80.0),
-        demand_mwh=np.array([5_000.0, 4_800.0, 4_000.0]),
+        spot_prices=[80.0] * 3,
+        demand_mwh=[5_000.0, 4_800.0, 4_000.0],
         usage_values_eur_mwh={"P1": 60.0, "P2": 60.0},
         plants=[
             _entry(_plant("P1", 100.0)),
@@ -119,8 +131,8 @@ def test_engine_returns_national_supply_and_deficits():
 def test_engine_recharge_resets_stock_and_restores_production():
     scenario = _scenario(
         horizon_days=6,
-        spot_prices=np.full(6, 80.0),
-        demand_mwh=np.zeros(6),
+        spot_prices=[80.0] * 6,
+        demand_mwh=[0.0] * 6,
         plants=[
             _entry(
                 _plant(initial_jepp=1.0),
@@ -137,14 +149,14 @@ def test_engine_recharge_resets_stock_and_restores_production():
         [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
     )
     assert plant_result.production_factors[3] == 1.0
-    assert plant_result.depletion_days == (1, 4)
+    assert plant_result.depletion_days == [1, 4]
 
 
 def test_engine_depletion_clips_energy_and_supply():
     scenario = _scenario(
         horizon_days=2,
-        spot_prices=np.full(2, 80.0),
-        demand_mwh=np.zeros(2),
+        spot_prices=[80.0] * 2,
+        demand_mwh=[0.0] * 2,
         plants=[
             _entry(_plant(nominal_power_mw=100.0, initial_jepp=0.5)),
         ],
@@ -156,14 +168,14 @@ def test_engine_depletion_clips_energy_and_supply():
     np.testing.assert_allclose(plant_result.production_factors, [0.5, 0.0])
     np.testing.assert_allclose(plant_result.energy_mwh, [1_200.0, 0.0])
     np.testing.assert_allclose(result.national_supply_mwh, [1_200.0, 0.0])
-    assert plant_result.depletion_days == (0,)
+    assert plant_result.depletion_days == [0]
 
 
 def test_engine_alert_assembly_has_deterministic_order():
     scenario = _scenario(
         horizon_days=4,
-        spot_prices=np.array([10.0, 100.0, 100.0, 100.0]),
-        demand_mwh=np.array([0.0, 30_000.0, 0.0, 0.0]),
+        spot_prices=[10.0, 100.0, 100.0, 100.0],
+        demand_mwh=[0.0, 30_000.0, 0.0, 0.0],
         plants=[_entry(_plant(initial_jepp=1.0))],
     )
 
@@ -184,8 +196,8 @@ def test_engine_alert_assembly_has_deterministic_order():
 def test_engine_includes_spot_below_usage_value_alerts():
     scenario = _scenario(
         horizon_days=2,
-        spot_prices=np.array([10.0, 50.0]),
-        demand_mwh=np.zeros(2),
+        spot_prices=[10.0, 50.0],
+        demand_mwh=[0.0, 0.0],
         plants=[_entry(_plant(initial_jepp=100.0))],
     )
 
@@ -195,65 +207,6 @@ def test_engine_includes_spot_below_usage_value_alerts():
         AlertKind.SPOT_BELOW_USAGE_VALUE,
         AlertKind.SPOT_BELOW_USAGE_VALUE,
     ]
-
-
-def _invalid_scenarios() -> list[Scenario]:
-    return [
-        _scenario(
-            horizon_days=0,
-            spot_prices=np.array([]),
-            demand_mwh=np.array([]),
-        ),
-        _scenario(spot_prices=np.ones((1, 4))),
-        _scenario(spot_prices=np.ones(3)),
-        _scenario(demand_mwh=np.ones((1, 4))),
-        _scenario(demand_mwh=np.ones(3)),
-        _scenario(plants=[], usage_values_eur_mwh={}),
-        _scenario(
-            plants=[
-                _entry(_plant("P1")),
-                _entry(_plant("P1")),
-            ]
-        ),
-        _scenario(
-            plants=[_entry(_plant(nominal_power_mw=-1.0))],
-        ),
-        _scenario(
-            plants=[_entry(_plant(initial_jepp=-1.0))],
-        ),
-        _scenario(usage_values_eur_mwh={"P2": 60.0}),
-        _scenario(
-            plants=[
-                _entry(
-                    maintenances=(
-                        _maintenance(1, 3),
-                        _maintenance(2, 4),
-                    )
-                )
-            ]
-        ),
-        _scenario(
-            plants=[
-                _entry(maintenances=(_maintenance(3, 2),)),
-            ]
-        ),
-        _scenario(
-            plants=[
-                _entry(modulations=(Modulation(2, 2, 0.5),)),
-            ]
-        ),
-        _scenario(
-            plants=[
-                _entry(modulations=(Modulation(0, 1, 1.5),)),
-            ]
-        ),
-    ]
-
-
-@pytest.mark.parametrize("scenario", _invalid_scenarios())
-def test_engine_rejects_invalid_scenarios(scenario: Scenario):
-    with pytest.raises(ValueError):
-        NucliEngine().run(scenario)
 
 
 def test_engine_execution_time_is_non_negative():

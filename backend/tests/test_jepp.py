@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from chaours.jepp import simulate_stock_cycles
 from chaours.types import FloatArray, Maintenance, OutageKind
@@ -164,19 +163,6 @@ def test_inputs_are_not_mutated():
 
     np.testing.assert_array_equal(requested, requested_before)
     assert maintenances == maintenances_before
-
-
-@pytest.mark.parametrize(
-    "requested, initial_jepp",
-    [
-        (np.zeros((2, 2), dtype=np.float64), 1.0),
-        (_factors(0.5), -0.1),
-        (_factors(0.5, -0.1), 1.0),
-    ],
-)
-def test_invalid_inputs_raise_value_error(requested: FloatArray, initial_jepp: float):
-    with pytest.raises(ValueError):
-        simulate_stock_cycles(requested, initial_jepp, ())
 
 
 def test_empty_horizon_returns_empty_outputs():

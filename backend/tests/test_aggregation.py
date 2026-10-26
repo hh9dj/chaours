@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from chaours.aggregation import (
     daily_power_variation_mw,
@@ -73,44 +72,3 @@ def test_daily_power_variation_supports_two_dimensions():
 
     assert result.shape == (2, 2)
     np.testing.assert_allclose(result, [[10.0, -10.0], [10.0, 20.0]])
-
-
-@pytest.mark.parametrize(
-    "factors, nominal_power",
-    [
-        (np.ones(3), np.array([1.0])),
-        (np.ones((1, 3)), np.array([[1.0]])),
-        (np.ones((2, 3)), np.array([1.0])),
-        (np.ones((1, 3)), np.array([1.0, 2.0])),
-    ],
-)
-def test_energy_mwh_rejects_shape_mismatches(
-    factors: np.ndarray, nominal_power: np.ndarray
-):
-    with pytest.raises(ValueError):
-        energy_mwh(factors, nominal_power)
-
-
-def test_national_supply_rejects_non_two_dimensional_input():
-    with pytest.raises(ValueError):
-        national_supply(np.ones(3))
-
-
-@pytest.mark.parametrize(
-    "supply, demand",
-    [
-        (np.ones(3), np.ones((1, 3))),
-        (np.ones((1, 3)), np.ones(3)),
-        (np.ones(2), np.ones(3)),
-    ],
-)
-def test_deficit_days_rejects_invalid_shapes(
-    supply: np.ndarray, demand: np.ndarray
-):
-    with pytest.raises(ValueError):
-        deficit_days(supply, demand)
-
-
-def test_daily_power_variation_rejects_other_dimensions():
-    with pytest.raises(ValueError):
-        daily_power_variation_mw(np.ones((1, 1, 3)))

@@ -84,16 +84,6 @@ def remit_alerts(
     tranche, une gravité ``WARNING``, et inclut les bornes des arrêts
     planifiés.
     """
-    if variation_mw.ndim != 2:
-        raise ValueError(
-            f"variation_mw must be two-dimensional, got {variation_mw.ndim} dimensions"
-        )
-    if variation_mw.shape[0] != len(plant_ids):
-        raise ValueError(
-            "variation_mw rows must match plant ids: "
-            f"{variation_mw.shape[0]} != {len(plant_ids)}"
-        )
-
     alerts: list[Alert] = []
 
     for plant_index, plant_id in enumerate(plant_ids):
@@ -156,12 +146,6 @@ def deficit_alerts(deficit_day_indices: IntArray) -> list[Alert]:
     ``deficit_day_indices`` est un tableau 1D d'indices entiers. Renvoie une
     alerte ``RTE_DEFICIT`` par jour.
     """
-    if deficit_day_indices.ndim != 1:
-        raise ValueError(
-            "deficit_day_indices must be one-dimensional, "
-            f"got {deficit_day_indices.ndim} dimensions"
-        )
-
     alerts: list[Alert] = []
     for day_index in deficit_day_indices:
         day = int(day_index)

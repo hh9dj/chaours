@@ -1,14 +1,19 @@
-from dataclasses import fields
+from __future__ import annotations
 
-import numpy as np
+from uuid import uuid4
 
 from chaours.types import (
+    Alert,
+    AlertKind,
     Maintenance,
     Modulation,
     OutageKind,
     Plant,
+    PlantResult,
     Scenario,
+    Severity,
     Simulation,
+    SimulationResult,
 )
 
 
@@ -21,82 +26,95 @@ def _plant(plant_id: str = "P1") -> Plant:
     )
 
 
-def _scenario(scenario_id: str = "test") -> Scenario:
-    return Scenario(
-        scenario_id=scenario_id,
-        horizon_days=4,
-        spot_prices=np.full(4, 80.0),
-        demand_mwh=np.zeros(4),
-        usage_values_eur_mwh={"P1": 60.0},
+def _entry(
+    plant_id: str = "P1",
+    maintenances: list[Maintenance] | None = None,
+    modulations: list[Modulation] | None = None,
+) -> Simulation:
+    return Simulation(
+        plant=_plant(plant_id),
+        maintenances=list(maintenances or []),
+        modulations=list(modulations or []),
     )
 
 
-def test_scenario_plant_starts_with_empty_schedule_lists():
-    entry = Simulation(_plant())
+def _scenario() -> Scenario:
+    return Scenario(
+        name="test",
+        horizon_days=4,
+        spot_prices=[80.0] * 4,
+        demand_mwh=[0.0] * 4,
+        usage_values_eur_mwh={"P1": 60.0, "P2": 60.0},
+        plants=[_entry("P1"), _entry("P2")],
+    )
+
+
+def test_simulation_starts_with_empty_schedule_lists():
+    entry = Simulation(plant=_plant())
 
     assert entry.maintenances == []
     assert entry.modulations == []
 
 
-def test_schedule_records_do_not_carry_plant_ids():
-    maintenance_fields = {field.name for field in fields(Maintenance)}
-    modulation_fields = {field.name for field in fields(Modulation)}
-
-    assert "plant_id" not in maintenance_fields
-    assert "plant_id" not in modulation_fields
-
-
-def test_scenario_plant_add_helpers_populate_owner_lists():
-    entry = Simulation(_plant())
-
-    maintenance = entry.add_maintenance(OutageKind.ASR, 1, 3)
-    modulation = entry.add_modulation(2, 4, 0.5)
-
-    assert entry.maintenances == [maintenance]
-    assert entry.modulations == [modulation]
-    assert maintenance.kind == OutageKind.ASR
-    assert maintenance.start_day == 1
-    assert maintenance.end_day == 3
-    assert modulation.factor == 0.5
-
-
-def test_scenario_add_plant_returns_the_new_entry():
-    scenario = _scenario()
-
-    entry = scenario.add_plant(_plant("P1"))
-
-    assert scenario.plants == [entry]
-    assert entry.plant.id == "P1"
-
-
-def test_shared_plant_configuration_does_not_share_schedule_lists():
-    plant = _plant("P1")
-    first_scenario = _scenario("first")
-    second_scenario = _scenario("second")
-
-    first = first_scenario.add_plant(plant)
-    second = second_scenario.add_plant(plant)
-    first.add_maintenance(OutageKind.ASR, 1, 3)
-    first.add_modulation(1, 2, 0.5)
-
-    assert second.maintenances == []
-    assert second.modulations == []
-    assert first_scenario.maintenances_by_plant["P1"] == (
-        Maintenance(OutageKind.ASR, 1, 3),
+def test_schedules_are_owned_by_the_simulation_entry():
+    entry = _entry(
+        maintenances=[Maintenance(kind=OutageKind.ASR, start_day=1, end_day=3)],
+        modulations=[Modulation(start_day=2, end_day=4, factor=0.5)],
     )
-    assert second_scenario.maintenances_by_plant["P1"] == ()
+
+    assert entry.maintenances[0].kind == OutageKind.ASR
+    assert entry.maintenances[0].start_day == 1
+    assert entry.maintenances[0].end_day == 3
+    assert entry.modulations[0].factor == 0.5
 
 
 def test_scenario_schedule_mappings_keep_entry_order():
     scenario = _scenario()
-    first = scenario.add_plant(_plant("P1"))
-    second = scenario.add_plant(_plant("P2"))
-    first.add_maintenance(OutageKind.ASR, 1, 3)
-    second.add_maintenance(OutageKind.VP, 2, 4)
-    first.add_modulation(1, 2, 0.5)
-    second.add_modulation(2, 3, 0.7)
+    scenario.plants[0].maintenances = [Maintenance(kind=OutageKind.ASR, start_day=1, end_day=3)]
+    scenario.plants[1].maintenances = [Maintenance(kind=OutageKind.VP, start_day=2, end_day=4)]
+    scenario.plants[0].modulations = [Modulation(start_day=1, end_day=2, factor=0.5)]
+    scenario.plants[1].modulations = [Modulation(start_day=2, end_day=3, factor=0.7)]
 
     assert list(scenario.maintenances_by_plant) == ["P1", "P2"]
     assert list(scenario.modulations_by_plant) == ["P1", "P2"]
-    assert scenario.maintenances_by_plant["P2"] == (Maintenance(OutageKind.VP, 2, 4),)
-    assert scenario.modulations_by_plant["P1"] == (Modulation(1, 2, 0.5),)
+    assert scenario.maintenances_by_plant["P2"] == (
+        Maintenance(kind=OutageKind.VP, start_day=2, end_day=4),
+    )
+    assert scenario.modulations_by_plant["P1"] == (Modulation(start_day=1, end_day=2, factor=0.5),)
+
+
+def test_result_alerts_are_grouped_by_plant_and_national():
+    plant_alert = Alert(
+        kind=AlertKind.REMIT_UMM,
+        day=1,
+        plant_id="P1",
+        message="Alerte tranche.",
+        severity=Severity.WARNING,
+    )
+    national_alert = Alert(
+        kind=AlertKind.RTE_DEFICIT,
+        day=2,
+        plant_id=None,
+        message="Alerte nationale.",
+        severity=Severity.CRITICAL,
+    )
+    result = SimulationResult(
+        scenario_id=uuid4(),
+        execution_time_ms=1.0,
+        plants=[
+            PlantResult(
+                plant_id="P1",
+                production_factors=[1.0, 1.0, 1.0],
+                energy_mwh=[1.0, 1.0, 1.0],
+                remaining_jepp=[1.0, 1.0, 1.0],
+                depletion_days=[],
+            )
+        ],
+        national_supply_mwh=[1.0, 1.0, 1.0],
+        demand_mwh=[0.0, 0.0, 0.0],
+        deficit_days=[2],
+        alerts=[plant_alert, national_alert],
+    )
+
+    assert result.alerts_by_plant == {"P1": (plant_alert,)}
+    assert result.national_alerts == (national_alert,)

@@ -2,7 +2,13 @@
 name = "chaours-backend"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["numpy>=2.5.4"]
+dependencies = [
+    "fastapi>=0.162.0",
+    "numpy>=2.5.4",
+    "pydantic>=2.14.1",
+    "sqlmodel>=0.0.48",
+    "uvicorn[standard]>=0.54.0",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -27,6 +33,7 @@ show_error_codes = true
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
 ]

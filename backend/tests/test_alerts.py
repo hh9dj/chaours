@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from chaours.alerts import (
     deficit_alerts,
@@ -26,19 +25,19 @@ def _plant(plant_id: str) -> Plant:
     )
 
 
-def _result(plant_id: str, depletion_days: tuple[int, ...] = ()) -> PlantResult:
-    values = np.ones(4, dtype=np.float64)
+def _result(plant_id: str, depletion_days: list[int] | None = None) -> PlantResult:
+    values = [1.0, 1.0, 1.0, 1.0]
     return PlantResult(
         plant_id=plant_id,
         production_factors=values,
         energy_mwh=values,
         remaining_jepp=values,
-        depletion_days=depletion_days,
+        depletion_days=list(depletion_days or []),
     )
 
 
 def _maintenance(start_day: int, end_day: int) -> Maintenance:
-    return Maintenance(OutageKind.ASR, start_day, end_day)
+    return Maintenance(kind=OutageKind.ASR, start_day=start_day, end_day=end_day)
 
 
 def test_spot_below_usage_value_raises_alert():
@@ -76,7 +75,7 @@ def test_usage_values_are_matched_by_plant_id_not_order():
 
 def test_neutronic_alert_when_depletion_precedes_outage():
     alerts = neutronic_alerts(
-        (_result("P1", (5,)),),
+        (_result("P1", [5]),),
         {"P1": (_maintenance(10, 12),)},
     )
 
@@ -92,7 +91,7 @@ def test_neutronic_alert_when_depletion_precedes_outage():
 
 def test_neutronic_alert_when_no_future_stop_exists():
     alerts = neutronic_alerts(
-        (_result("P1", (5,)),),
+        (_result("P1", [5]),),
         {"P1": (_maintenance(1, 3),)},
     )
 
@@ -103,7 +102,7 @@ def test_neutronic_alert_when_no_future_stop_exists():
 
 def test_neutronic_alert_ignores_other_plants_for_next_stop():
     alerts = neutronic_alerts(
-        (_result("P1", (5,)),),
+        (_result("P1", [5]),),
         {
             "P2": (_maintenance(7, 9),),
             "P1": (_maintenance(11, 13),),
@@ -116,7 +115,7 @@ def test_neutronic_alert_ignores_other_plants_for_next_stop():
 
 def test_one_neutronic_alert_per_depletion_day():
     alerts = neutronic_alerts(
-        (_result("P1", (2, 7)),),
+        (_result("P1", [2, 7]),),
         {"P1": (_maintenance(10, 12),)},
     )
 
@@ -193,8 +192,3 @@ def test_deficit_alert_per_deficit_day():
 
 def test_deficit_alerts_empty_without_deficit():
     assert deficit_alerts(np.array([], dtype=np.intp)) == []
-
-
-def test_remit_alerts_reject_shape_mismatch():
-    with pytest.raises(ValueError):
-        remit_alerts(np.ones((2, 3)), ("P1",))

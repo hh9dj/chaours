@@ -1,523 +1,533 @@
-# Nucliplan Frontend Specification
+# Spécification frontend
 
-Status: implemented POC, browser-only calculation.
+Statut : conception cible et feuille de route frontend.
 
-## 1. Purpose and scope
+Propriétaire : worktree frontend.
 
-The frontend is a single-page planning simulator for one nuclear unit. It lets the user:
+Ce fichier est la source de vérité de l'interface, des parcours utilisateur, du contrat API consommé et de la feuille de route frontend.
 
-- configure a simulation horizon;
-- set the initial JEPP stock;
-- define a default discharge factor;
-- define modulation periods with their own discharge factor;
-- define planned stops with ASR, VP, or VD type;
-- view the JEPP trajectory and key indicators;
-- edit modulation and stop periods directly on the chart with the mouse.
+## Consigne pour l'agent
 
-The application has one static unit, `Tranche 1 — 900 MW`. It does not load plant data, persist scenarios, aggregate a fleet, or call a backend.
+- Lire d'abord `spec/README.md`, `spec/02-concepts.md` et `spec/03-regles-metier.md`.
+- Ce fichier est la source de vérité du worktree frontend.
+- Le contrat API de la section 3 est un miroir figé de `backend/spec.md`.
+- Ne pas modifier `spec/`, `backend/spec.md`, `README.md` ni `AGENTS.md`.
+- Ne pas implémenter de code backend.
+- Mettre à jour uniquement la checklist d'implémentation frontend de ce fichier.
+- Laisser les changements non commités sauf demande explicite de l'utilisateur.
 
-## 2. Stack and commands
+## 1. Objet et périmètre
 
-- Vue 3 with `<script setup>` and TypeScript.
-- Vite build tooling.
-- Tailwind CSS v4 through `@tailwindcss/vite`.
-- Vitest for unit tests.
-- No charting library. The chart is custom inline SVG.
-- No state-management library. State is local Vue state.
+Construire l'application web de CHAOURS. Elle permet de :
 
-Root `Justfile` commands:
+- consulter un dashboard de simulations sous forme de cartes ;
+- créer une simulation ;
+- ouvrir une simulation et voir ses tranches ;
+- visualiser une timeline par tranche ;
+- modifier les arrêts, les modulations et la configuration d'une tranche ;
+- modifier les paramètres d'une simulation ;
+- consulter les alertes de tranche sur la timeline ;
+- consulter les alertes nationales dans une barre latérale.
 
-```text
-just setup    pnpm install in frontend/
-just dev      Vite development server
-just test     Vitest run
-just build    vue-tsc and production build
-just check    test then build
-just clean    remove node_modules and dist
+Le frontend ne calcule pas les résultats métier. Il appelle le backend FastAPI et affiche `ResultatSimulation`.
+
+## 2. Stack, commandes et arborescence
+
+Stack :
+
+- Vue 3 avec `<script setup>` et TypeScript.
+- Vite.
+- Pinia pour l'état applicatif.
+- Tailwind CSS v4.
+- Vitest pour les tests.
+- Interface en français.
+- Navigateurs desktop.
+
+Commandes :
+
+```sh
+pnpm -C frontend install
+pnpm -C frontend dev
+pnpm -C frontend test
+pnpm -C frontend build
 ```
 
-Package scripts in `frontend/package.json`:
-
-```text
-dev, build, preview, test, test:watch, typecheck
-```
-
-## 3. File structure
+Arborescence cible :
 
 ```text
 frontend/
-  index.html
   src/
     main.ts
     App.vue
+    router.ts
     style.css
+    api/
+      client.ts
+      types.ts
+    stores/
+      simulations.ts
+    views/
+      DashboardView.vue
+      SimulationView.vue
     components/
-      TrancheCard.vue
-      TrajectoireChart.vue
+      SimulationCard.vue
+      AddSimulationCard.vue
+      CreateSimulationDialog.vue
+      SimulationSettingsDialog.vue
+      TrancheTimeline.vue
+      TrancheEditor.vue
+      NationalAlertsSidebar.vue
+      AlertPopover.vue
     lib/
-      jepp.ts
-      jepp.test.ts
-      chronologie.ts
-      chronologie.test.ts
+      timeline.ts
+      timeline.test.ts
       couleurs.ts
       couleurs.test.ts
-      planification.ts
+      format.ts
+      format.test.ts
 ```
 
-## 4. Domain model
+## 3. Contrat API consommé
 
-### 4.1 JEPP and discharge
+Le backend est la source de vérité. Toute évolution doit être reportée ici et dans `backend/spec.md` avant de poursuivre le travail parallèle.
 
-JEPP means day-equivalent full power.
+URL de base :
 
-- 1 JEPP is the energy consumed by running at 100 % nominal power for 24 hours.
-- The default discharge factor is a percentage from 0 to 100.
-- 100 % consumes 1 JEPP per day. 50 % consumes 0.5 JEPP per day.
-- A modulation period overrides the default factor on every calendar day inside its start and end dates, inclusive.
-- Outside modulation periods, the default factor applies.
-- A stop freezes consumption. The JEPP value at stop start stays constant during the stop.
-- The stop end is a recharge point. The stock resets to the initial JEPP value.
-- Consumption resumes after the recharge point.
-- Multiple stops and multiple modulation periods are supported.
-- Stops are processed in chronological order.
-- Modulations may overlap stops. The stop color and stop behavior take priority.
+- variable `VITE_API_BASE_URL` ;
+- valeur par défaut : `http://localhost:8000`.
 
-### 4.2 Dates
+Erreurs :
 
-- Dates use the `YYYY-MM-DD` representation.
-- Date arithmetic uses UTC midnight to avoid timezone and daylight-saving drift.
-- The simulation starts at the current local date, normalized to UTC midnight.
-- The simulation horizon ends at the same calendar date plus the configured number of years.
-- Start and end dates of modulation periods are inclusive.
-- A stop ends at `start date + stop duration`.
-- Rotation or aggregation of dates is day-based. There is no hourly granularity.
+- `404` : simulation ou tranche inconnue.
+- `422` : validation Pydantic. Le corps contient `detail`.
+- Afficher les messages en français dans l'interface.
 
-### 4.3 Stop types
+Types TypeScript :
 
-```text
-ASR  Arrêt simple pour rechargement  45 days
-VP   Visite partielle                90 days
-VD   Visite décennale                180 days
+```ts
+type TypeArret = "ASR" | "VP" | "VD";
+
+type TypeAlerte =
+  | "NEUTRONIC_ANOMALY"
+  | "REMIT_UMM"
+  | "RTE_DEFICIT"
+  | "SPOT_BELOW_USAGE_VALUE";
+
+type Gravite = "INFO" | "WARNING" | "CRITICAL";
+
+interface Tranche {
+  identifiant: string;
+  code_eic: string;
+  puissance_nominale_mw: number;
+  jepp_initial: number;
+}
+
+interface Arret {
+  type_arret: TypeArret;
+  jour_debut: number;
+  jour_fin: number;
+}
+
+interface Modulation {
+  jour_debut: number;
+  jour_fin: number;
+  facteur: number;
+}
+
+interface Simulation {
+  tranche: Tranche;
+  arrets: Arret[];
+  modulations: Modulation[];
+}
+
+interface Scenario {
+  simulation_id: string;
+  nom: string;
+  cree_le: string;
+  horizon_jours: number;
+  prix_spot_eur_mwh: number[];
+  demande_nationale_mwh: number[];
+  valeur_usage_eur_mwh: number[];
+  tranches: Simulation[];
+}
+
+interface SimulationResume {
+  simulation_id: string;
+  nom: string;
+  cree_le: string;
+  horizon_jours: number;
+  nombre_tranches: number;
+}
+
+interface ScenarioCreation {
+  nom: string;
+  horizon_jours: number;
+  prix_spot_eur_mwh: number[];
+  demande_nationale_mwh: number[];
+  valeur_usage_eur_mwh: number[];
+  tranches: Simulation[];
+}
+
+interface ParametresSimulation {
+  nom: string;
+  horizon_jours: number;
+  prix_spot_eur_mwh: number[];
+  demande_nationale_mwh: number[];
+  valeur_usage_eur_mwh: number[];
+}
+
+interface ConfigurationTranche {
+  code_eic: string;
+  puissance_nominale_mw: number;
+  jepp_initial: number;
+}
+
+interface ResultatTranche {
+  tranche_id: string;
+  facteurs_production: number[];
+  energie_mwh: number[];
+  jepp_restant: number[];
+  jours_epuisement: number[];
+}
+
+interface Alerte {
+  type_alerte: TypeAlerte;
+  jour: number | null;
+  tranche_id: string | null;
+  message: string;
+  gravite: Gravite;
+}
+
+interface ResultatSimulation {
+  simulation_id: string;
+  duree_execution_ms: number;
+  tranches: ResultatTranche[];
+  offre_nationale_mwh: number[];
+  demande_mwh: number[];
+  jours_deficit: number[];
+  alertes: Alerte[];
+}
 ```
 
-The stop duration is fixed by type. Stops can be moved on the chart but cannot be resized there. The type can be changed from the popover if the new duration stays inside the horizon and does not overlap another stop.
+Endpoints :
 
-### 4.4 Horizon
+- `GET /simulations/` : renvoie `SimulationResume[]`.
+- `POST /simulations/` : reçoit `ScenarioCreation`, renvoie `Scenario`, statut `201`.
+- `GET /simulations/{simulation_id}` : renvoie `Scenario`.
+- `PUT /simulations/{simulation_id}` : reçoit `ParametresSimulation`, renvoie `Scenario`.
+- `DELETE /simulations/{simulation_id}` : statut `204`.
+- `PUT /simulations/{simulation_id}/plants/{plant_id}` : reçoit `ConfigurationTranche`, renvoie `Scenario`.
+- `PUT /simulations/{simulation_id}/plants/{plant_id}/maintenances` : reçoit `Arret[]`, renvoie `Scenario`.
+- `PUT /simulations/{simulation_id}/plants/{plant_id}/modulations` : reçoit `Modulation[]`, renvoie `Scenario`.
+- `POST /simulations/{simulation_id}/run` : renvoie `ResultatSimulation`.
 
-- Minimum: 1 year.
-- Maximum: 20 years.
-- Default: 5 years.
-- Horizon end is calculated from the current date.
-- Any modulation or stop must fit inside the horizon.
+Le paramètre `plant_id` est l'`identifiant` de la tranche. Il est immuable.
 
-### 4.5 Simulation result
+## 4. Routes et navigation
 
-The simulation function returns:
+Routes :
 
-- validation errors;
-- horizon end date;
-- normalized modulation periods, sorted by start date;
-- normalized stops, sorted by start date, with `jeppAvant` for each stop;
-- first stop and the JEPP value before it;
-- days until the first stop;
-- autonomy in days;
-- exhaustion alert flag;
-- first stop reached with an empty stock;
-- daily trajectory points.
+- `/` : dashboard des simulations.
+- `/simulations/:simulation_id` : détail d'une simulation.
 
-Trajectory point phases:
+Navigation :
 
-```text
-production     stock decreases according to the effective factor
-arret          stock stays constant during the stop
-rechargement  stock resets to the initial value at stop end
-```
-
-The trajectory is daily from today through horizon end, inclusive.
-
-### 4.6 Autonomy
-
-Autonomy estimates the number of days needed to consume the initial stock using the effective factors from today.
-
-- It ignores stops and recharges.
-- It uses modulation factors when the current date is inside a modulation period.
-- It returns `null` when no positive factor exists or the stock is not exhausted within 36,500 simulated days.
-- A `null` value is displayed as `∞`.
-
-### 4.7 Validation rules
-
-Simulation is rejected when any rule below fails. Errors are shown in French and the chart is not rendered.
-
-- Initial JEPP must be a finite number greater than or equal to zero.
-- Default discharge factor must be between 0 % and 100 %.
-- Horizon must be an integer between 1 and 20 years.
-- Each modulation period must have a valid start and end date.
-- A modulation start cannot be before today.
-- A modulation end cannot be after horizon end.
-- A modulation end cannot be before its start.
-- A modulation factor must be between 0 % and 100 %.
-- Modulation periods cannot overlap. The next start must be after the previous end.
-- Each stop must have a valid start date.
-- A stop start cannot be before today or after horizon end.
-- A stop must not extend beyond horizon end.
-- The stop type must be a known type.
-- Stops cannot overlap. The next start must be after the previous end.
-- Modulations and stops may overlap each other.
+- clic sur une carte de simulation : ouvre `/simulations/:simulation_id` ;
+- clic sur le bouton retour du détail : retour au dashboard ;
+- rechargement direct d'une URL de simulation : charge la simulation depuis l'API.
 
-## 5. Page layout
-
-- The application uses the full viewport width.
-- Header: `Nucliplan`, subtitle, and logo block.
-- Main title: `Planification tranche`.
-- A single card contains the unit header, the input panel, and the results panel.
-- On large screens the card uses two columns: 340 px fixed input column and a flexible results column.
-- On smaller screens the columns stack.
-- The interface language is French.
-- The unit header displays `Tranche 1 — 900 MW` and `Simulation indicative`.
-
-## 6. Inputs
+## 5. Store Pinia et client API
 
-### 6.1 Horizon
-
-Number input labelled `Horizon (années)`.
+Créer un store `simulations` avec :
 
-- Default: 5.
-- Step: 1.
-- Range: 1 to 20.
+- `simulations: SimulationResume[]` ;
+- `currentScenario: Scenario | null` ;
+- `currentResult: ResultatSimulation | null` ;
+- `loading` ;
+- `error` ;
+- actions de chargement, création, mise à jour, suppression et exécution.
 
-### 6.2 Initial stock
+Le client API doit :
 
-Number input labelled `JEPP initial`.
+- centraliser l'URL de base ;
+- convertir les erreurs HTTP en erreurs lisibles ;
+- exposer des fonctions typées pour chaque endpoint ;
+- ne pas calculer de résultats métier.
 
-- Default: 90.
-- Minimum: 0.
-- Step: 1.
+Après chaque modification réussie :
 
-### 6.3 Default discharge factor
+1. remplacer `currentScenario` par la réponse du `PUT` ;
+2. appeler `POST /simulations/{simulation_id}/run` ;
+3. remplacer `currentResult` ;
+4. mettre à jour la timeline et la barre latérale.
 
-Range slider labelled `Facteur par défaut`.
+## 6. Dashboard
 
-- Default: 100 %.
-- Range: 0 to 100.
-- Step: 5.
-- The current value is shown in a green badge.
-- Help text states it applies outside modulation periods and that 100 % equals 1 JEPP per day.
-
-### 6.4 Modulation periods
+Charger `GET /simulations/`.
 
-Section `Périodes de modulation`.
+Afficher :
 
-- Empty state: `Aucune période. Le facteur par défaut s'applique sur tout l'horizon.`
-- `+ Ajouter une période` creates a new modulation.
-- The first new modulation starts today.
-- Later new modulations start after the latest existing modulation end, plus one day.
-- Default duration is 30 days.
-- Default factor is 50 %.
-- Dates are clamped to the horizon when a new period is added.
-- Each card shows a colored left border, a colored dot, `Période N`, and a remove button.
-- Editable fields: start date, end date, factor.
-- Clicking a card selects it and highlights the matching chart band.
-- The selected card gets a colored outline.
-- Deleting the selected item clears the selection.
+- une grille de cartes de simulation ;
+- une carte `+` pour créer une simulation ;
+- un état vide si aucune simulation n'existe ;
+- un état de chargement ;
+- un état d'erreur avec bouton de réessai.
 
-### 6.5 Planned stops
-
-Section `Arrêts planifiés`.
-
-- Empty state: `Aucun arrêt planifié. La trajectoire montre uniquement la consommation sur l'horizon.`
-- `+ Ajouter un arrêt` creates a new stop.
-- The first new stop starts 90 days from today.
-- Later new stops start after the latest existing stop end, plus 30 days.
-- Dates are clamped to the horizon.
-- New stop type is ASR.
-- Each card shows a colored left border, a colored dot, `Arrêt N`, and a remove button.
-- Editable fields: start date and stop type.
-- The card displays the type description and duration.
-- Clicking a card selects it and highlights the matching chart band.
-- The selected card gets a colored outline.
-- Deleting the selected item clears the selection.
-
-## 7. Summary and alerts
-
-The results column shows one of four banners.
-
-- Red error block when simulation validation fails.
-- Amber `Épuisement avant un arrêt` when the stock reaches zero before a stop, or when the initial stock is zero.
-- Neutral `Aucun arrêt planifié` when no stop exists.
-- Green `Stock suffisant pour les arrêts planifiés` otherwise. The banner shows the minimum JEPP value before any stop.
-
-The summary grid shows:
-
-- number of stops;
-- first stop date;
-- JEPP before the first stop;
-- autonomy in days, or `∞`.
+Carte de simulation :
 
-Numbers use French formatting with at most one decimal.
-
-## 8. Interactive JEPP chart
+- nom ;
+- horizon en jours ;
+- date de création formatée en français ;
+- nombre de tranches ;
+- clic vers le détail.
 
-### 8.1 Geometry and axes
+Création :
 
-- Inline SVG, viewBox `800 × 260`.
-- Plot padding: 28 px horizontal, 34 px top, 34 px bottom.
-- Y scale starts at 0 and ends at the maximum JEPP value in the trajectory.
-- A dashed horizontal line marks zero.
-- Five X-axis ticks are generated from the visible window.
-- Tick format depends on the visible duration:
-  - 120 days or less: day and short month;
-  - 1100 days or less: short month and year;
-  - longer: year.
-- The chart is clipped to the plot area.
-- All chart colors come from the item colors.
-
-### 8.2 Curve and bands
-
-The JEPP curve is split into colored segments:
-
-1. A date inside a stop uses the stop color.
-2. Otherwise, a date inside a modulation uses the modulation color.
-3. Otherwise, the default color is emerald `#059669`.
-
-Adjacent segments share the boundary point to avoid visual gaps. Stops take priority over modulations.
-
-Chart overlays:
-
-- modulation bands, normal opacity 0.11, selected opacity 0.26;
-- stop bands, normal opacity 0.18, selected opacity 0.32;
-- `M1`, `M2` labels for modulations;
-- `A1`, `A2` labels for stops;
-- a neutral gray area fill under the curve.
-
-A legend below the chart lists:
-
-- `Hors période` with the default color;
-- each modulation with label, dates, and factor;
-- each stop with label, dates, and type.
-
-### 8.3 Hover tooltip
-
-- Moving the pointer over the chart shows a dashed vertical crosshair.
-- A colored dot marks the nearest trajectory point.
-- A tooltip shows the date and JEPP value at that point.
-- The tooltip stays inside the chart area.
-- It hides when the pointer leaves, during a drag, and when zoom changes.
-- The tooltip uses the closest daily point, not interpolated values.
-
-### 8.4 Selection and popover
-
-- Selecting a band highlights its card and its band.
-- Selecting a card highlights its band.
-- A selected band opens a popover if it is visible in the current view.
-- The popover is hidden when the selected item is outside the current zoom window.
-- Modulation popover: dates and a factor number input from 0 to 100, step 5.
-- Stop popover: dates and a type select.
-- Stop type changes are rejected if the new duration exceeds the horizon or overlaps another stop.
-- The popover has a close button.
-
-### 8.5 Editing modes
+- la carte `+` ouvre `CreateSimulationDialog` ;
+- champs : nom, horizon, identifiant de la première tranche, code EIC, puissance nominale, JEPP initial ;
+- valeurs par défaut : horizon 365 jours, prix spot 80 €/MWh, demande nationale 0 MWh, VU 60 €/MWh ;
+- les séries sont plates sur tout l'horizon ;
+- après création, fermer le dialogue et naviguer vers la simulation créée.
 
-Toolbar buttons:
+## 7. Vue simulation
 
-```text
-Sélection
-+ Modulation
-+ Arrêt
-```
+Charger :
 
-Selection mode:
+- `GET /simulations/{simulation_id}` ;
+- puis `POST /simulations/{simulation_id}/run`.
 
-- Click empty chart space to clear selection.
-- Drag empty chart space to pan when zoomed.
-- Drag a modulation band body to move it.
-- Drag modulation edge handles to resize it.
-- Drag a stop band body to move it.
-- Stops have no resize handles.
-- The hint `Glissez le fond du graphique pour déplacer la vue...` appears when zoomed.
+Afficher :
 
-Modulation creation mode:
+- en-tête avec le nom de la simulation, l'horizon et la date de création ;
+- bouton `Paramètres` ;
+- bouton retour vers le dashboard ;
+- liste des tranches ;
+- une timeline par tranche ;
+- barre latérale des alertes nationales.
 
-- Drag on empty chart space to create a modulation range.
-- Single click creates a 30-day modulation at the clicked date.
-- The new modulation factor is 50 %.
-- The item is selected after creation.
-- The toolbar returns to selection mode.
+Chaque ligne de tranche affiche :
 
-Stop creation mode:
+- identifiant, code EIC, puissance nominale et JEPP initial ;
+- timeline ;
+- légende locale ou infobulle ;
+- bouton ou zone cliquable pour ouvrir `TrancheEditor`.
 
-- Click or drag to place an ASR stop at the pointer date.
-- The stop duration is 45 days.
-- The item is selected after creation.
-- The toolbar returns to selection mode.
-
-Invalid creation:
+## 8. Timeline
 
-- The preview turns red.
-- An inline message explains the overlap or horizon violation.
-- No item is created.
+La timeline représente les jours `0` à `horizon_jours - 1`.
 
-### 8.6 Move and resize constraints
+Hauteur des barres :
 
-- Dates snap to whole days.
-- Modulation moves preserve their duration.
-- Modulation edge resizing changes only the start or end date.
-- Stop moves preserve the duration fixed by their type.
-- Items are clamped inside the horizon.
-- Items are clamped against same-type neighbors.
-- Modulations and stops may overlap each other.
-- Moving and resizing update the forms and simulation live.
-- `Escape` cancels the active move, resize, creation, or pan and restores the original state.
-- `pointercancel` clears the interaction.
-- Modulation edge handles are thin 1.25-unit colored lines.
-- Each edge has an invisible hit zone of 4 to 10 chart units, based on band width.
-- Handles are hidden for bands narrower than 6 chart units.
-
-### 8.7 Zoom and pan
-
-Zoom presets:
-
-```text
-Tout    full horizon
-5 ans   1825 days, capped to the horizon
-1 an    365 days, capped to the horizon
-3 mois  91 days, capped to the horizon
-```
-
-- The visible window is always clamped inside the horizon.
-- Panning is available by dragging empty chart space in selection mode.
-- Panning is clamped to the horizon.
-- Changing zoom clears the hover tooltip.
-- The visible window drives curve geometry, bands, ticks, tooltips, and date conversion.
-
-## 9. Colors
-
-Default curve color: emerald `#059669`.
-
-Modulation palette:
-
-```text
-#0284c7 #4f46e5 #0891b2 #2563eb #7c3aed #475569
-```
-
-Stop palette:
-
-```text
-#d97706 #ea580c #dc2626 #e11d48 #9333ea #92400e
-```
-
-Rules:
-
-- A color is assigned when an item is created.
-- The color is stored in the form object, so removing another item does not recolor it.
-- The palettes cycle after six items.
-- The same color is used for the card border, card dot, chart band, and curve segment.
-- Stop color wins over modulation color when dates overlap.
-
-## 10. State and data flow
-
-Source of truth:
-
-- `initialJepp`
-- `facteurDefaut`
-- `horizonAnnees`
-- `arrets`
-- `modulations`
-
-Derived state:
-
-- `dateFinHorizon`
-- `result = simulate(...)`
-- summary values
-- chart geometry and chart legend
-
-Interaction flow:
-
-1. `TrancheCard.vue` owns the forms and simulation state.
-2. `TrajectoireChart.vue` owns chart display state: mode, zoom, visible window, hover, drag, preview, and messages.
-3. The chart emits selection, date updates, factor updates, type updates, and creation events.
-4. `TrancheCard.vue` applies those events to the forms.
-5. The simulation recomputes.
-6. The chart re-renders from the new trajectory and forms.
-
-All state is in memory. Reloading the page resets everything. There is no persistence, URL state, or backend.
-
-## 11. Accessibility and UX details
-
-- Form controls have labels and focus styles.
-- Chart bands have pointer cursors: grab, crosshair, or resize.
-- The chart uses `touch-action: none` to support pointer dragging.
-- The chart has an ARIA label.
-- Escape is supported during chart interactions.
-- Keyboard editing of chart bands is not implemented. The side cards remain the accessible editing fallback.
-- Colors are accompanied by labels, dots, and card context, not used alone to convey meaning.
-
-## 12. Tests
-
-Current test suite: 51 tests across three files.
-
-`jepp.test.ts` covers:
-
-- date parsing and timezone-safe arithmetic;
-- French date formatting;
-- stock depletion at stop start;
-- modulation factors and custom periods;
-- default factor behavior outside periods;
-- zero-factor behavior;
-- horizon usage;
-- recharge reset;
-- post-recharge consumption;
-- multiple stops;
-- overlapping modulation and stop rejection;
-- horizon violations;
-- past dates;
-- invalid stock, factor, or horizon;
-- empty stock alert;
-- trajectory without stops.
-
-`chronologie.test.ts` covers:
-
-- zoom window duration and clamping;
-- pixel-to-date and date-to-pixel conversion;
-- tick generation;
-- move clamping against neighbors and horizon;
-- resize clamping;
-- creation range validation;
-- pan clamping.
-
-`couleurs.test.ts` covers:
-
-- palette cycling;
-- default color outside periods;
-- modulation color selection;
-- stop priority over modulation;
-- inclusive date boundaries;
-- segment grouping and shared boundary points.
-
-## 13. Known limitations
-
-Not implemented:
-
-- multiple nuclear units or fleet aggregation;
-- plant reference data, EIC codes, nominal MW, or regional constraints;
-- demand curve comparison;
-- spot prices, Valeur d’Usage, or market arbitrage;
-- national MW production aggregation;
-- REMIT UMM generation;
-- backend API, database, persistence, scenarios, or revisions;
-- user accounts, permissions, or collaboration;
-- undo/redo history beyond cancelling the current drag with Escape;
-- custom stop durations by resizing;
-- automatic zoom on selection;
-- pinch zoom or multi-touch gestures;
-- keyboard movement of chart bands;
-- scenario export or import;
-- save, share, or URL-encoded state.
-
-Behavioral limitations:
-
-- Simulation runs entirely in the browser.
-- Invalid side-card values remove the chart from the page until corrected.
-- Colors repeat after six items in each palette.
-- The chart uses daily resolution only.
-- The unit name and power are static.
-- The chart tooltip reads the nearest daily point; it does not interpolate between days.
+- la hauteur est proportionnelle à `facteurs_production[jour]`, entre 0 et 1 ;
+- un jour sans production a une hauteur nulle ;
+- un jour de maintenance affiche un bloc gris pleine hauteur, même si le facteur vaut 0.
+
+Couleur JEPP :
+
+- ratio = `jepp_restant[jour] / jepp_initial` ;
+- vert si ratio supérieur ou égal à 0.50 ;
+- jaune si ratio supérieur ou égal à 0.20 ;
+- orange si ratio supérieur ou égal à 0.05 ;
+- rouge si ratio inférieur à 0.05 ;
+- si `jepp_initial` vaut 0, utiliser rouge.
+
+Modulation :
+
+- un jour couvert par une modulation est marqué visuellement, par exemple avec un liseré supérieur bleu ;
+- la hauteur reste celle du facteur de production réel ;
+- la maintenance reste grise et prioritaire sur le marquage de modulation.
+
+Alertes de tranche :
+
+- filtrer `currentResult.alertes` par `tranche_id` et `jour` ;
+- afficher une icône d'avertissement cliquable sur le jour concerné ;
+- l'icône ouvre `AlertPopover` avec le message, le jour et la gravité ;
+- les alertes sans jour ne sont pas placées sur la timeline.
+
+Infobulle :
+
+- jour ;
+- facteur de production ;
+- énergie ;
+- JEPP restant ;
+- modulation appliquée si présente ;
+- arrêt en cours si présent.
+
+Légende :
+
+- hauteur = production ;
+- gris = maintenance ;
+- vert, jaune, orange, rouge = niveau de JEPP ;
+- icône = alerte de tranche.
+
+Interaction :
+
+- clic sur la timeline ouvre `TrancheEditor` pour la tranche ;
+- la timeline est accessible au clavier : les jours et les alertes ont des libellés accessibles ;
+- aucune information ne dépend uniquement de la couleur.
+
+## 9. Éditeur de tranche
+
+Ouvrir `TrancheEditor` depuis la timeline.
+
+Champs de configuration :
+
+- code EIC ;
+- puissance nominale en MW ;
+- JEPP initial ;
+- identifiant affiché mais non modifiable.
+
+Arrêts :
+
+- ajouter, modifier et supprimer des arrêts ;
+- type ASR, VP ou VD ;
+- `jour_debut`, `jour_fin` ;
+- afficher les erreurs de chevauchement ou de dépassement d'horizon en français.
+
+Modulations :
+
+- ajouter, modifier et supprimer des modulations ;
+- `jour_debut`, `jour_fin`, `facteur` entre 0 et 1 ;
+- afficher les erreurs de chevauchement ou de dépassement d'horizon en français.
+
+Enregistrement :
+
+1. appeler `PUT /simulations/{simulation_id}/plants/{plant_id}` ;
+2. appeler `PUT /simulations/{simulation_id}/plants/{plant_id}/maintenances` ;
+3. appeler `PUT /simulations/{simulation_id}/plants/{plant_id}/modulations` ;
+4. recharger le scénario ou utiliser la dernière réponse ;
+5. appeler `/run`.
+
+Si un appel échoue, afficher l'erreur, recharger le scénario depuis l'API et ne pas afficher de résultat incohérent.
+
+## 10. Paramètres de simulation
+
+Ouvrir `SimulationSettingsDialog` depuis le bouton `Paramètres`.
+
+Champs :
+
+- nom ;
+- horizon en jours ;
+- série de prix spot ;
+- série de demande nationale ;
+- série de valeur d'usage.
+
+Édition des séries :
+
+- utiliser une zone de texte ou un éditeur de liste avec une valeur par ligne ;
+- valider les nombres et la longueur côté client ;
+- afficher le nombre de valeurs attendu ;
+- autoriser le copier-coller de séries.
+
+Changement d'horizon :
+
+- redimensionner les trois séries côté client ;
+- tronquer si l'horizon diminue ;
+- étendre avec la dernière valeur si l'horizon augmente ;
+- demander à l'utilisateur de vérifier avant l'enregistrement.
+
+Enregistrement :
+
+- envoyer les trois séries complètes et redimensionnées à `PUT /simulations/{simulation_id}` ;
+- un planning hors horizon produit `422` ;
+- afficher les erreurs en français ;
+- appeler `/run` après succès.
+
+## 11. Alertes
+
+Alertes de tranche :
+
+- `NEUTRONIC_ANOMALY` ;
+- `REMIT_UMM`.
+
+Alertes nationales :
+
+- `RTE_DEFICIT` ;
+- `SPOT_BELOW_USAGE_VALUE`.
+
+La barre latérale `NationalAlertsSidebar` ne montre que les alertes nationales. Elle ne doit jamais afficher une alerte avec `tranche_id` non nul.
+
+Chaque alerte affiche :
+
+- un titre lisible en français ;
+- le jour concerné ;
+- la gravité ;
+- le message du backend ;
+- pour une alerte de tranche, l'identifiant de la tranche.
+
+Couleurs de gravité :
+
+- `CRITICAL` : rouge ;
+- `WARNING` : ambre ;
+- `INFO` : neutre.
+
+Les couleurs sont accompagnées d'un libellé.
+
+## 12. États, erreurs et accessibilité
+
+- État de chargement pour le dashboard et le détail.
+- État vide pour le dashboard.
+- État vide pour une simulation sans alerte nationale.
+- Erreur API avec bouton de réessai.
+- Erreur de validation `422` affichée dans le dialogue concerné.
+- Messages et libellés en français.
+- Labels explicites pour les champs.
+- Navigation clavier pour les cartes, les boutons et les icônes d'alerte.
+- Focus visible.
+- Les alertes ne sont pas signalées uniquement par la couleur.
+- Cible desktop, sans dégradation majeure sur tablette.
+
+## 13. Tests et critères d'acceptation
+
+Tests Vitest :
+
+- hauteur de barre = facteur de production ;
+- seuils de couleur JEPP ;
+- maintenance grise prioritaire ;
+- marquage des modulations ;
+- filtrage des alertes de tranche et nationales ;
+- redimensionnement des séries lors d'un changement d'horizon ;
+- client API et gestion des erreurs `404` et `422`.
+
+Critères d'acceptation :
+
+- le dashboard liste les simulations et permet d'en créer une ;
+- une simulation s'ouvre par URL directe ;
+- chaque tranche affiche une timeline de jour 0 à la fin de l'horizon ;
+- les arrêts sont gris ;
+- la hauteur suit la production réelle ;
+- les couleurs JEPP respectent les seuils ;
+- les alertes de tranche sont cliquables sur la timeline ;
+- les alertes nationales apparaissent uniquement dans la barre latérale ;
+- les éditeurs mettent à jour le backend et relancent le calcul ;
+- les erreurs de validation sont visibles en français ;
+- `pnpm -C frontend test` et `pnpm -C frontend build` passent.
+
+## 14. Feuille de route frontend
+
+- [ ] Mettre en place le router, le store Pinia et le client API.
+- [ ] Définir les types TypeScript du contrat API.
+- [ ] Implémenter le dashboard et les cartes de simulation.
+- [ ] Implémenter le dialogue de création.
+- [ ] Implémenter la vue simulation et le chargement du résultat.
+- [ ] Implémenter la timeline et ses calculs.
+- [ ] Implémenter l'éditeur de tranche.
+- [ ] Implémenter les paramètres de simulation.
+- [ ] Implémenter la barre latérale des alertes nationales.
+- [ ] Implémenter les popovers d'alerte de tranche.
+- [ ] Ajouter les états de chargement, vide et erreur.
+- [ ] Écrire les tests Vitest.
+- [ ] Vérifier `pnpm -C frontend test`.
+- [ ] Vérifier `pnpm -C frontend build`.
+- [ ] Laisser les changements non commités.
+
+## 15. Hors périmètre
+
+- authentification et gestion des utilisateurs ;
+- collaboration temps réel ;
+- historique de versions ou annulation globale ;
+- persistance des résultats ;
+- export ou import de simulation ;
+- glisser-déposer sur la timeline dans cette première version ;
+- application mobile ;
+- calcul métier dans le navigateur.

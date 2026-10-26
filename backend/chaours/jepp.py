@@ -80,13 +80,6 @@ def simulate_stock_cycles(
     concerné, par ordre croissant. Aucune dégradation automatique ni
     stretch-out n'est appliqué au-delà de la limite physique du stock.
     """
-    if requested_factors.ndim != 1:
-        raise ValueError("requested_factors doit être un tableau 1D")
-    if initial_jepp < 0.0:
-        raise ValueError("initial_jepp doit être positif ou nul")
-    if np.any(requested_factors < 0.0):
-        raise ValueError("requested_factors ne doit pas contenir de valeur négative")
-
     horizon = requested_factors.shape[0]
     actual = np.zeros(horizon, dtype=np.float64)
     remaining = np.zeros(horizon, dtype=np.float64)
