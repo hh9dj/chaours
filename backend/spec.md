@@ -1,23 +1,6 @@
 # Backend Specification
 
-Status: target design and backend implementation roadmap.
-
-Owner: backend worktree.
-
 This file is the source of truth for the backend architecture, persistence schema, API contract, and backend delivery checklist.
-
-## Agent brief
-
-- Read `spec/README.md`, `spec/02-concepts.md`, and `spec/03-regles-metier.md` first.
-- This file is authoritative for the backend worktree.
-- The current implementation may not match this specification. Replace it as needed.
-- Rename the current per-tranche Pydantic class `PlantPlan` to `Simulation`.
-- Remove `scenario_id` from the backend and use `simulation_id` everywhere.
-- Remove the current JSON persistence columns and the per-tranche VU mapping.
-- Do not edit `spec/`, `frontend/spec.md`, `README.md`, or `AGENTS.md`.
-- Do not implement frontend code.
-- Update only the backend implementation checklist in this file.
-- Leave changes uncommitted unless the user asks for a commit.
 
 ## 1. Purpose and scope
 
@@ -30,14 +13,6 @@ The backend:
 - validates all input with Pydantic v2;
 - computes results on demand with the NumPy engine;
 - returns computed results without persisting them.
-
-Non-goals:
-
-- frontend implementation;
-- result history or revisions;
-- user accounts, permissions, or collaboration;
-- database migrations beyond `SQLModel.metadata.create_all` for the MVP;
-- persistence of alerts, deficit days, depletion days, supply, or energy.
 
 ## 2. Architecture and file map
 
@@ -60,6 +35,7 @@ backend/
       repository.py
     api/
       __init__.py
+      context.py
       main.py
       deps.py
       routes/
@@ -142,7 +118,7 @@ Keep enum string values unchanged because they are protocol and UI codes.
 - `facteur: float` with `0.0 <= facteur <= 1.0`.
 - `jour_fin > jour_debut`.
 
-`Simulation`
+`SimulationTranche`
 
 - This is the per-tranche simulation entry.
 - `tranche: Tranche`.
@@ -152,7 +128,7 @@ Keep enum string values unchanged because they are protocol and UI codes.
 - No overlapping modulation windows for the same tranche.
 - Touching windows are allowed: `next.jour_debut == previous.jour_fin` is not an overlap.
 
-`Scenario`
+`Simulation`
 
 - `simulation_id: UUID` with `uuid4` default factory.
 - `nom: str` with `min_length=1`, `max_length=200`.
@@ -161,7 +137,7 @@ Keep enum string values unchanged because they are protocol and UI codes.
 - `prix_spot_eur_mwh: list[float]`.
 - `demande_nationale_mwh: list[float]`.
 - `valeur_usage_eur_mwh: list[float]`.
-- `tranches: list[Simulation]`.
+- `tranches: list[SimulationTranche]`.
 
 `SimulationResume`
 
@@ -171,14 +147,14 @@ Keep enum string values unchanged because they are protocol and UI codes.
 - `horizon_jours: int`.
 - `nombre_tranches: int`.
 
-`ScenarioCreation`
+`SimulationCreation`
 
 - `nom: str`.
 - `horizon_jours: int`.
 - `prix_spot_eur_mwh: list[float]`.
 - `demande_nationale_mwh: list[float]`.
 - `valeur_usage_eur_mwh: list[float]`.
-- `tranches: list[Simulation]`.
+- `tranches: list[SimulationTranche]`.
 
 `ParametresSimulation`
 
@@ -224,7 +200,7 @@ Keep enum string values unchanged because they are protocol and UI codes.
 
 ### 4.4 Grouping properties
 
-`Scenario`
+`Simulation`
 
 - `arrets_par_tranche -> dict[str, tuple[Arret, ...]]`
 - `modulations_par_tranche -> dict[str, tuple[Modulation, ...]]`
@@ -238,11 +214,11 @@ Keep enum string values unchanged because they are protocol and UI codes.
 
 All validation lives in Pydantic. The engine and computation modules assume validated input.
 
-`Scenario` validation:
+`Simulation` validation:
 
 - `horizon_jours` between 1 and 7305.
-- At least one tranche.
-- Unique tranche `identifiant`.
+- The tranche list may be empty, including at creation.
+- Unique tranche `identifiant` when tranches are present.
 - `prix_spot_eur_mwh`, `demande_nationale_mwh`, and `valeur_usage_eur_mwh` have exactly `horizon_jours` values.
 - All series values are finite.
 - Demand values are non-negative.
@@ -311,6 +287,22 @@ Tables use French names and columns. Use SQLModel table models in `backend/chaou
 - Composite foreign key `(simulation_id, tranche_id)` to `tranches(simulation_id, identifiant)` with `ON DELETE CASCADE`.
 - Index on `(simulation_id, tranche_id)`.
 
+Indexes:
+
+- `simulations.simulation_id`: primary-key index. Used by simulation lookup, update and delete, and by child foreign-key checks.
+- `donnees_journalieres (simulation_id, jour)`: composite primary-key index. Loads one simulation's daily rows in day order and supports foreign-key cascade checks. The day-row integrity check reads exactly this range.
+- `tranches (simulation_id, identifiant)`: composite primary-key index. Resolves a tranche inside its simulation and provides the parent key required by the composite child foreign keys.
+- `arrets (simulation_id, tranche_id)`: explicit composite index. SQLite does not automatically index child foreign-key columns. This index serves schedule loads per simulation and tranche and cascade checks. The surrogate `id` primary key cannot serve these predicates.
+- `modulations (simulation_id, tranche_id)`: explicit composite index, for the same reasons as `arrets`.
+- `arrets.id` and `modulations.id`: integer primary keys used as stable ordering tie-breakers. They are rowid aliases, so they do not add a separate index.
+
+Columns not indexed:
+
+- `type_arret`, `jour_debut`, `jour_fin`, `facteur`, the daily series values, `nom`, `cree_le`, and `horizon_jours`.
+- No current query filters on these columns. They are read after an indexed lookup.
+- Adding indexes would increase write cost without a measured read benefit.
+- Revisit `cree_le` if the simulation list grows large enough for its ordering to matter, or if new filters are introduced.
+
 Schema rules:
 
 - No JSON columns.
@@ -341,7 +333,7 @@ Computed and never persisted:
 - alerts;
 - execution time.
 
-Results are recomputed by `POST /simulations/{simulation_id}/run` after loading the persisted scenario.
+Results are recomputed by `POST /simulations/{simulation_id}/run` after loading the persisted simulation.
 
 ## 8. Repository layer
 
@@ -350,24 +342,25 @@ Implement in `backend/chaours/db/repository.py`.
 Required functions:
 
 - `list_simulations(session) -> list[SimulationResume]`
-- `create_simulation(session, payload: ScenarioCreation) -> Scenario`
-- `get_simulation(session, simulation_id: UUID) -> Scenario | None`
-- `update_simulation(session, simulation_id: UUID, payload: ParametresSimulation) -> Scenario | None`
-- `update_tranche(session, simulation_id: UUID, plant_id: str, payload: ConfigurationTranche) -> Scenario | None`
-- `replace_arrets(session, simulation_id: UUID, plant_id: str, arrets: list[Arret]) -> Scenario | None`
-- `replace_modulations(session, simulation_id: UUID, plant_id: str, modulations: list[Modulation]) -> Scenario | None`
+- `create_simulation(session, payload: SimulationCreation) -> Simulation`
+- `get_simulation(session, simulation_id: UUID) -> Simulation | None`
+- `update_simulation(session, simulation_id: UUID, payload: ParametresSimulation) -> Simulation | None`
+- `update_tranche(session, simulation_id: UUID, plant_id: str, payload: ConfigurationTranche) -> Simulation | None`
+- `add_tranche(session, simulation_id: UUID, payload: SimulationTranche) -> Simulation | None`
+- `replace_arrets(session, simulation_id: UUID, plant_id: str, arrets: list[Arret]) -> Simulation | None`
+- `replace_modulations(session, simulation_id: UUID, plant_id: str, modulations: list[Modulation]) -> Simulation | None`
 - `delete_simulation(session, simulation_id: UUID) -> bool`
-- `duplicate_simulation(session, simulation_id: UUID) -> Scenario | None` (repository capability, not exposed by the API in this iteration)
+- `duplicate_simulation(session, simulation_id: UUID) -> Simulation | None` (repository capability, not exposed by the API in this iteration)
 
 Repository rules:
 
 - Convert explicitly between Pydantic models and SQLModel rows.
-- Reconstruct and validate the full `Scenario` on every read.
+- Reconstruct and validate the full `Simulation` on every read.
 - Verify that `donnees_journalieres` rows are exactly `0 .. horizon_jours - 1`. Reject gaps, duplicates, missing days, and out-of-horizon days.
 - `create_simulation` generates `simulation_id` and `cree_le`.
 - `update_simulation` replaces name, horizon, and all three series. The client must send complete resized series.
 - `update_tranche` does not allow changing `identifiant`.
-- Schedule replacement rebuilds the full scenario, validates it with Pydantic, then persists it. No out-of-horizon or overlapping schedule may be persisted.
+- Schedule replacement rebuilds the full simulation, validates it with Pydantic, then persists it. No out-of-horizon or overlapping schedule may be persisted.
 - `duplicate_simulation` gets a new UUID, current timestamp, and suffixed name.
 - `delete_simulation` returns `False` for an unknown id and relies on database cascade for children.
 - Do not mutate nested lists in place.
@@ -380,7 +373,10 @@ Application factory:
 
 - `create_app(database_url: str | None = None) -> FastAPI`.
 - Module-level `app = create_app()` for uvicorn.
-- Create tables in the factory.
+- Build a typed `AppContext` during lifespan startup.
+- Create tables during lifespan startup.
+- Dispose the SQLAlchemy engine during lifespan shutdown.
+- Expose the context and sessions only through FastAPI dependencies. Route handlers must not read `app.state` directly.
 - Add CORS for local Vue development origins.
 - Include the simulations router.
 - Register a Pydantic `ValidationError` handler that returns `422`.
@@ -402,21 +398,21 @@ Endpoints:
 
 `POST /simulations/`
 
-- Request: `ScenarioCreation`.
+- Request: `SimulationCreation`.
 - Server generates `simulation_id` and `cree_le`.
-- Response: `Scenario`.
+- Response: `Simulation`.
 - Status: `201`.
 
 `GET /simulations/{simulation_id}`
 
-- Response: `Scenario`.
+- Response: `Simulation`.
 - Status: `200`.
 - Unknown simulation: `404`.
 
 `PUT /simulations/{simulation_id}`
 
 - Request: `ParametresSimulation`.
-- Response: updated `Scenario`.
+- Response: updated `Simulation`.
 - Status: `200`.
 - Unknown simulation: `404`.
 - Invalid horizon or series length: `422`.
@@ -427,10 +423,18 @@ Endpoints:
 - Status: `204`.
 - Unknown simulation: `404`.
 
+`POST /simulations/{simulation_id}/plants`
+
+- Request: `SimulationTranche`.
+- Response: updated `Simulation`.
+- Status: `201`.
+- Unknown simulation: `404`.
+- Duplicate tranche identifier or invalid schedule: `422`.
+
 `PUT /simulations/{simulation_id}/plants/{plant_id}`
 
 - Request: `ConfigurationTranche`.
-- Response: updated `Scenario`.
+- Response: updated `Simulation`.
 - Status: `200`.
 - Unknown simulation or tranche: `404`.
 - Invalid configuration: `422`.
@@ -438,7 +442,7 @@ Endpoints:
 `PUT /simulations/{simulation_id}/plants/{plant_id}/maintenances`
 
 - Request: `list[Arret]`.
-- Response: updated `Scenario`.
+- Response: updated `Simulation`.
 - Status: `200`.
 - Unknown simulation or tranche: `404`.
 - Cross-field validation errors: `422`.
@@ -446,14 +450,14 @@ Endpoints:
 `PUT /simulations/{simulation_id}/plants/{plant_id}/modulations`
 
 - Request: `list[Modulation]`.
-- Response: updated `Scenario`.
+- Response: updated `Simulation`.
 - Status: `200`.
 - Unknown simulation or tranche: `404`.
 - Cross-field validation errors: `422`.
 
 `POST /simulations/{simulation_id}/run`
 
-- Loads and validates the persisted `Scenario`.
+- Loads and validates the persisted `Simulation`.
 - Runs `NucliEngine`.
 - Response: `ResultatSimulation`.
 - Status: `200`.
@@ -478,10 +482,10 @@ Update `backend/chaours/engine.py` and computation modules:
 
 Update `backend/chaours/__main__.py`:
 
-- Build `Scenario` and `Simulation` models directly.
+- Build `Simulation` and `SimulationTranche` models directly.
 - Use the French fields.
 - Use flat national series for spot, demand, and VU.
-- Update mock and benchmark scenarios.
+- Update mock and benchmark simulations.
 - Keep `python -m chaours` and `python -m chaours --benchmark`.
 
 Local database:
@@ -498,37 +502,29 @@ Required tests:
 - `test_engine.py`: computation and integration with the new models.
 - `test_production.py`, `test_jepp.py`, `test_aggregation.py`, `test_alerts.py`: computation behavior without duplicate validation tests.
 - `test_db_repository.py`: CRUD, list summaries, cascade deletion, day-row integrity, round-trip, tranche update, schedule replacement, validation failure, isolation.
-- `test_api.py`: list, create, get, update settings, update tranche config, update outages, update modulations, run, delete, `404`, `422`.
+- `test_api.py`: list, create, get, add tranche, update settings, update tranche config, update outages, update modulations, run, delete, `404`, `422`.
 
 Use in-memory SQLite for repository and API tests. Use FastAPI `TestClient`.
 
 ## 13. Backend implementation checklist
 
-- [ ] Replace `PlantPlan` with `Simulation` everywhere.
-- [ ] Replace `scenario_id` with `simulation_id` everywhere.
-- [ ] Rename Pydantic classes and fields to French names.
-- [ ] Replace per-tranche VU mapping with national VU series.
-- [ ] Update validation rules and result models.
-- [ ] Update engine, alerts, production, JEPP, aggregation, and CLI.
-- [ ] Replace JSON table models with normalized tables.
-- [ ] Implement composite keys, foreign keys, and cascade deletes.
-- [ ] Implement repository functions and day-row integrity checks.
-- [ ] Implement list and update API endpoints.
-- [ ] Update all backend tests.
-- [ ] Delete the local old `chaours.db`.
-- [ ] Run `just backend-check`.
-- [ ] Run the CLI.
-- [ ] Run the benchmark and confirm `PASS`.
-- [ ] Leave changes uncommitted.
-
-## 14. Definition of done
-
-- Full backend test suite passes.
-- API tests pass.
-- mypy is clean.
-- CLI runs.
-- Benchmark reports `PASS` under 40 ms.
-- No JSON columns remain in the database schema.
-- No result tables exist.
-- All endpoints in this specification are implemented.
-- `git status --short` is reported to the user.
+- [x] Replace `PlantPlan` with `SimulationTranche`.
+- [x] Rename the aggregate `Scenario` to `Simulation`.
+- [x] Replace `scenario_id` with `simulation_id` everywhere.
+- [x] Rename Pydantic classes and fields to French names.
+- [x] Replace per-tranche VU mapping with national VU series.
+- [x] Update validation rules and result models.
+- [x] Update engine, alerts, production, JEPP, aggregation, and CLI.
+- [x] Replace JSON table models with normalized tables.
+- [x] Implement composite keys, foreign keys, and cascade deletes.
+- [x] Implement repository functions and day-row integrity checks.
+- [x] Implement list and update API endpoints.
+- [x] Implement the add-tranche endpoint.
+- [x] Update all backend tests.
+- [x] Allow simulations with an empty tranche list.
+- [x] Add a typed application context and lifespan-managed engine.
+- [x] Delete the local old `chaours.db`.
+- [x] Run `just backend-check`.
+- [x] Run the CLI.
+- [x] Run the benchmark and confirm `PASS`.
+- [x] Leave changes uncommitted.

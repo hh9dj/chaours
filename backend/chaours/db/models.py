@@ -1,102 +1,103 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import ClassVar
 from uuid import UUID
 
-from sqlalchemy import JSON, Column, UniqueConstraint
-from sqlmodel import Field, Relationship, SQLModel
+from sqlalchemy import ForeignKeyConstraint, Index
+from sqlmodel import Field, SQLModel
 
-from chaours.types import OutageKind
+from chaours.types import TypeArret
 
 
-class ScenarioTable(SQLModel, table=True):
-    """Ligne persistée d'un scénario complet."""
+class SimulationTable(SQLModel, table=True):
+    """Ligne persistée de l'en-tête d'une simulation."""
 
-    __tablename__ = "scenarios"
+    __tablename__: ClassVar[str] = "simulations"
 
-    scenario_id: UUID = Field(primary_key=True)
-    name: str
-    created_at: datetime
-    horizon_days: int
-    spot_prices: list[float] = Field(
-        sa_column=Column(JSON, nullable=False)
+    simulation_id: UUID = Field(primary_key=True)
+    nom: str
+    cree_le: datetime
+    horizon_jours: int
+
+
+class DonneeJournaliereTable(SQLModel, table=True):
+    """Ligne persistée d'une série journalière nationale."""
+
+    __tablename__: ClassVar[str] = "donnees_journalieres"
+
+    simulation_id: UUID = Field(
+        primary_key=True,
+        foreign_key="simulations.simulation_id",
+        ondelete="CASCADE",
     )
-    demand_mwh: list[float] = Field(
-        sa_column=Column(JSON, nullable=False)
+    jour: int = Field(primary_key=True)
+    prix_spot_eur_mwh: float
+    demande_nationale_mwh: float
+    valeur_usage_eur_mwh: float
+
+
+class TrancheTable(SQLModel, table=True):
+    """Ligne persistée d'une tranche rattachée à une simulation."""
+
+    __tablename__: ClassVar[str] = "tranches"
+
+    simulation_id: UUID = Field(
+        primary_key=True,
+        foreign_key="simulations.simulation_id",
+        ondelete="CASCADE",
     )
-    usage_values_eur_mwh: dict[str, float] = Field(
-        sa_column=Column(JSON, nullable=False)
-    )
-
-    plants: list["PlantTable"] = Relationship(
-        back_populates="scenario",
-        cascade_delete=True,
-    )
+    identifiant: str = Field(primary_key=True)
+    code_eic: str
+    jepp_initial: float
+    puissance_nominale_mw: float
 
 
-class PlantTable(SQLModel, table=True):
-    """Ligne persistée d'une tranche rattachée à un scénario."""
+class ArretTable(SQLModel, table=True):
+    """Ligne persistée d'un arrêt planifié."""
 
-    __tablename__ = "plants"
+    __tablename__: ClassVar[str] = "arrets"
     __table_args__ = (
-        UniqueConstraint(
-            "scenario_id",
-            "plant_id",
-            name="uq_plants_scenario_plant",
+        ForeignKeyConstraint(
+            ["simulation_id", "tranche_id"],
+            ["tranches.simulation_id", "tranches.identifiant"],
+            ondelete="CASCADE",
+        ),
+        Index(
+            "ix_arrets_simulation_tranche",
+            "simulation_id",
+            "tranche_id",
         ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    scenario_id: UUID = Field(
-        foreign_key="scenarios.scenario_id",
-        ondelete="CASCADE",
-        index=True,
-    )
-    plant_id: str
-    eic_code: str
-    nominal_power_mw: float
-    initial_jepp: float
-
-    scenario: ScenarioTable | None = Relationship(back_populates="plants")
-    maintenances: list["MaintenanceTable"] = Relationship(
-        back_populates="plant",
-        cascade_delete=True,
-    )
-    modulations: list["ModulationTable"] = Relationship(
-        back_populates="plant",
-        cascade_delete=True,
-    )
-
-
-class MaintenanceTable(SQLModel, table=True):
-    """Ligne persistée d'un arrêt planifié."""
-
-    __tablename__ = "maintenances"
-
-    id: int | None = Field(default=None, primary_key=True)
-    plant_id: int = Field(
-        foreign_key="plants.id",
-        ondelete="CASCADE",
-        index=True,
-    )
-    kind: OutageKind
-    start_day: int
-    end_day: int
-
-    plant: PlantTable | None = Relationship(back_populates="maintenances")
+    simulation_id: UUID
+    tranche_id: str
+    type_arret: TypeArret
+    jour_debut: int
+    jour_fin: int
 
 
 class ModulationTable(SQLModel, table=True):
     """Ligne persistée d'une modulation manuelle."""
 
-    __tablename__ = "modulations"
+    __tablename__: ClassVar[str] = "modulations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["simulation_id", "tranche_id"],
+            ["tranches.simulation_id", "tranches.identifiant"],
+            ondelete="CASCADE",
+        ),
+        Index(
+            "ix_modulations_simulation_tranche",
+            "simulation_id",
+            "tranche_id",
+        ),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
-    plant_id: int = Field(
-        foreign_key="plants.id",
-        ondelete="CASCADE",
-        index=True,
-    )
-    start_day: int
-    end_day: int
-    factor: float
-
-    plant: PlantTable | None = Relationship(back_populates="modulations")
+    simulation_id: UUID
+    tranche_id: str
+    jour_debut: int
+    jour_fin: int
+    facteur: float

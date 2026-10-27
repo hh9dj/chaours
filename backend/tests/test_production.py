@@ -6,7 +6,7 @@ from chaours.production import (
     maintenance_mask,
     modulation_factors,
 )
-from chaours.types import Maintenance, Modulation, OutageKind
+from chaours.types import Arret, Modulation, TypeArret
 
 
 def test_nominal_factors_are_all_ones():
@@ -20,8 +20,8 @@ def test_nominal_factors_are_all_ones():
 def test_maintenance_mask_marks_all_outage_days():
     mask = maintenance_mask(
         (
-            Maintenance(kind=OutageKind.ASR, start_day=1, end_day=3),
-            Maintenance(kind=OutageKind.VP, start_day=4, end_day=6),
+            Arret(type_arret=TypeArret.ASR, jour_debut=1, jour_fin=3),
+            Arret(type_arret=TypeArret.VP, jour_debut=4, jour_fin=6),
         ),
         6,
     )
@@ -33,14 +33,14 @@ def test_maintenance_mask_marks_all_outage_days():
 
 def test_maintenance_mask_excludes_last_day():
     mask = maintenance_mask(
-        (Maintenance(kind=OutageKind.ASR, start_day=2, end_day=4),),
+        (Arret(type_arret=TypeArret.ASR, jour_debut=2, jour_fin=4),),
         5,
     )
 
     assert mask.tolist() == [False, False, True, True, False]
 
 
-def test_maintenance_mask_is_empty_without_maintenances():
+def test_maintenance_mask_is_empty_without_arrets():
     mask = maintenance_mask((), 3)
 
     assert mask.tolist() == [False, False, False]
@@ -51,24 +51,24 @@ def test_manual_modulation_applies_only_inside_window():
 
     result = apply_manual_modulation(
         factors,
-        (Modulation(start_day=1, end_day=3, factor=0.4),),
+        (Modulation(jour_debut=1, jour_fin=3, facteur=0.4),),
     )
 
     assert result.tolist() == [1.0, 0.4, 0.4, 1.0, 1.0]
 
 
-def test_manual_modulation_handles_multiple_and_overlapping_windows():
+def test_manual_modulation_handles_multiple_windows():
     factors = np.ones(7)
 
     result = apply_manual_modulation(
         factors,
         (
-            Modulation(start_day=1, end_day=4, factor=0.5),
-            Modulation(start_day=3, end_day=6, factor=0.2),
+            Modulation(jour_debut=1, jour_fin=4, facteur=0.5),
+            Modulation(jour_debut=4, jour_fin=6, facteur=0.2),
         ),
     )
 
-    assert result.tolist() == [1.0, 0.5, 0.5, 0.2, 0.2, 0.2, 1.0]
+    assert result.tolist() == [1.0, 0.5, 0.5, 0.5, 0.2, 0.2, 1.0]
 
 
 def test_apply_maintenance_zeros_only_outage_days():
@@ -83,13 +83,13 @@ def test_apply_maintenance_zeros_only_outage_days():
 def test_maintenance_wins_when_applied_after_modulation():
     factors = np.ones(4)
     mask = maintenance_mask(
-        (Maintenance(kind=OutageKind.ASR, start_day=1, end_day=3),),
+        (Arret(type_arret=TypeArret.ASR, jour_debut=1, jour_fin=3),),
         4,
     )
 
     modulated = apply_manual_modulation(
         factors,
-        (Modulation(start_day=1, end_day=4, factor=0.5),),
+        (Modulation(jour_debut=1, jour_fin=4, facteur=0.5),),
     )
     result = apply_maintenance(modulated, mask)
 
@@ -104,7 +104,7 @@ def test_functions_return_new_arrays_without_mutating_inputs():
 
     modulated = apply_manual_modulation(
         factors,
-        (Modulation(start_day=0, end_day=2, factor=0.3),),
+        (Modulation(jour_debut=0, jour_fin=2, facteur=0.3),),
     )
     maintained = apply_maintenance(modulated, mask)
     nominal = modulation_factors(4)

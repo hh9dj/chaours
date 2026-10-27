@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import Session
@@ -10,125 +9,205 @@ from chaours.api.deps import get_session
 from chaours.db import repository
 from chaours.engine import NucliEngine
 from chaours.types import (
-    Maintenance,
+    Arret,
+    ConfigurationTranche,
     Modulation,
-    Scenario,
-    SimulationResult,
+    ParametresSimulation,
+    ResultatSimulation,
+    Simulation,
+    SimulationCreation,
+    SimulationResume,
+    SimulationTranche,
 )
 
 router = APIRouter(prefix="/simulations", tags=["simulations"])
 
 
+@router.get("/", response_model=list[SimulationResume])
+def list_simulations(
+    session: Session = Depends(get_session),
+) -> list[SimulationResume]:
+    """Renvoie le résumé de toutes les simulations."""
+    return repository.list_simulations(session)
+
+
 @router.post(
     "/",
-    response_model=Scenario,
+    response_model=Simulation,
     status_code=status.HTTP_201_CREATED,
 )
 def create_simulation(
-    scenario: Scenario,
+    payload: SimulationCreation,
     session: Session = Depends(get_session),
-) -> Scenario:
-    """Crée un scénario isolé avec un identifiant serveur."""
-    scenario.scenario_id = uuid4()
-    scenario.created_at = datetime.now(UTC)
-    return repository.create_scenario(session, scenario)
+) -> Simulation:
+    """Crée une simulation avec un identifiant généré par le serveur."""
+    return repository.create_simulation(session, payload)
 
 
-@router.get("/{scenario_id}", response_model=Scenario)
+@router.get("/{simulation_id}", response_model=Simulation)
 def get_simulation(
-    scenario_id: UUID,
+    simulation_id: UUID,
     session: Session = Depends(get_session),
-) -> Scenario:
-    """Renvoie un scénario complet."""
-    scenario = repository.get_scenario(session, scenario_id)
-    if scenario is None:
+) -> Simulation:
+    """Renvoie une simulation complète."""
+    simulation = repository.get_simulation(session, simulation_id)
+    if simulation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Scenario not found",
+            detail="Simulation introuvable",
         )
-    return scenario
+    return simulation
+
+
+@router.put("/{simulation_id}", response_model=Simulation)
+def update_simulation(
+    simulation_id: UUID,
+    payload: ParametresSimulation,
+    session: Session = Depends(get_session),
+) -> Simulation:
+    """Met à jour le nom, l'horizon et les séries nationales."""
+    simulation = repository.update_simulation(
+        session,
+        simulation_id,
+        payload,
+    )
+    if simulation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Simulation introuvable",
+        )
+    return simulation
 
 
 @router.delete(
-    "/{scenario_id}",
+    "/{simulation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def delete_simulation(
-    scenario_id: UUID,
+    simulation_id: UUID,
     session: Session = Depends(get_session),
 ) -> Response:
-    """Supprime un scénario et ses dépendances."""
-    if not repository.delete_scenario(session, scenario_id):
+    """Supprime une simulation et ses dépendances."""
+    if not repository.delete_simulation(session, simulation_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Scenario not found",
+            detail="Simulation introuvable",
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.put(
-    "/{scenario_id}/plants/{plant_id}/maintenances",
-    response_model=Scenario,
+@router.post(
+    "/{simulation_id}/plants",
+    response_model=Simulation,
+    status_code=status.HTTP_201_CREATED,
 )
-def update_maintenances(
-    scenario_id: UUID,
-    plant_id: str,
-    maintenances: list[Maintenance],
+def add_tranche(
+    simulation_id: UUID,
+    payload: SimulationTranche,
     session: Session = Depends(get_session),
-) -> Scenario:
-    """Remplace les arrêts d'une tranche et renvoie le scénario validé."""
-    scenario = repository.replace_maintenances(
+) -> Simulation:
+    """Ajoute une tranche à une simulation existante."""
+    simulation = repository.add_tranche(
         session,
-        scenario_id,
-        plant_id,
-        maintenances,
+        simulation_id,
+        payload,
     )
-    if scenario is None:
+    if simulation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Scenario or plant not found",
+            detail="Simulation introuvable",
         )
-    return scenario
+    return simulation
 
 
 @router.put(
-    "/{scenario_id}/plants/{plant_id}/modulations",
-    response_model=Scenario,
+    "/{simulation_id}/plants/{plant_id}",
+    response_model=Simulation,
+)
+def update_tranche(
+    simulation_id: UUID,
+    plant_id: str,
+    payload: ConfigurationTranche,
+    session: Session = Depends(get_session),
+) -> Simulation:
+    """Met à jour la configuration d'une tranche."""
+    simulation = repository.update_tranche(
+        session,
+        simulation_id,
+        plant_id,
+        payload,
+    )
+    if simulation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Simulation ou tranche introuvable",
+        )
+    return simulation
+
+
+@router.put(
+    "/{simulation_id}/plants/{plant_id}/maintenances",
+    response_model=Simulation,
+)
+def update_arrets(
+    simulation_id: UUID,
+    plant_id: str,
+    arrets: list[Arret],
+    session: Session = Depends(get_session),
+) -> Simulation:
+    """Remplace les arrêts d'une tranche."""
+    simulation = repository.replace_arrets(
+        session,
+        simulation_id,
+        plant_id,
+        arrets,
+    )
+    if simulation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Simulation ou tranche introuvable",
+        )
+    return simulation
+
+
+@router.put(
+    "/{simulation_id}/plants/{plant_id}/modulations",
+    response_model=Simulation,
 )
 def update_modulations(
-    scenario_id: UUID,
+    simulation_id: UUID,
     plant_id: str,
     modulations: list[Modulation],
     session: Session = Depends(get_session),
-) -> Scenario:
-    """Remplace les modulations d'une tranche et renvoie le scénario validé."""
-    scenario = repository.replace_modulations(
+) -> Simulation:
+    """Remplace les modulations d'une tranche."""
+    simulation = repository.replace_modulations(
         session,
-        scenario_id,
+        simulation_id,
         plant_id,
         modulations,
     )
-    if scenario is None:
+    if simulation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Scenario or plant not found",
+            detail="Simulation ou tranche introuvable",
         )
-    return scenario
+    return simulation
 
 
 @router.post(
-    "/{scenario_id}/run",
-    response_model=SimulationResult,
+    "/{simulation_id}/run",
+    response_model=ResultatSimulation,
 )
 def run_simulation(
-    scenario_id: UUID,
+    simulation_id: UUID,
     session: Session = Depends(get_session),
-) -> SimulationResult:
-    """Exécute le moteur sur le scénario persisté."""
-    scenario = repository.get_scenario(session, scenario_id)
-    if scenario is None:
+) -> ResultatSimulation:
+    """Exécute le moteur sur la simulation persistée."""
+    simulation = repository.get_simulation(session, simulation_id)
+    if simulation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Scenario not found",
+            detail="Simulation introuvable",
         )
-    return NucliEngine().run(scenario)
+    return NucliEngine().run(simulation)

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from chaours.types import FloatArray, Maintenance
+from chaours.types import Arret, FloatArray
 
 
 def _consume_cycle(
@@ -45,7 +45,7 @@ def _consume_cycle(
 def simulate_stock_cycles(
     requested_factors: FloatArray,
     initial_jepp: float,
-    maintenances: Sequence[Maintenance],
+    arrets: Sequence[Arret],
 ) -> tuple[FloatArray, FloatArray, tuple[int, ...]]:
     """Applique la limite physique du stock JEPP sur chaque cycle.
 
@@ -54,17 +54,17 @@ def simulate_stock_cycles(
     les jours de maintenance y sont déjà mis à ``0.0`` par le pipeline de
     production. JEPP ne masque pas lui-même les jours d'arrêt.
 
-    ``maintenances`` contient les arrêts d'une seule tranche. La séquence peut
+    ``arrets`` contient les arrêts d'une seule tranche. La séquence peut
     être non triée ; elle est triée par ``start_day``. Les fenêtres sont
     valides, sans chevauchement et dans l'horizon. Les arrêts servent
     uniquement à découper les cycles et à réinitialiser le stock au
-    ``end_day``.
+    ``jour_fin``.
 
-    Un cycle va de ``0`` ou du ``end_day`` de l'arrêt précédent jusqu'au
-    ``end_day`` de l'arrêt courant, jours d'arrêt inclus, ou jusqu'à la fin
+    Un cycle va de ``0`` ou du ``jour_fin`` de l'arrêt précédent jusqu'au
+    ``jour_fin`` de l'arrêt courant, jours d'arrêt inclus, ou jusqu'à la fin
     de l'horizon pour le dernier cycle. Comme les facteurs demandés y sont
     déjà nuls, le stock reste constant pendant l'arrêt. Chaque cycle repart
-    de ``initial_jepp`` ; le rechargement est appliqué au ``end_day`` avant
+    de ``initial_jepp`` ; le rechargement est appliqué au ``jour_fin`` avant
     la production de ce jour.
 
     Si la consommation demandée d'un cycle dépasse ``initial_jepp``, le
@@ -85,21 +85,21 @@ def simulate_stock_cycles(
     remaining = np.zeros(horizon, dtype=np.float64)
     depletion_days: list[int] = []
 
-    sorted_maintenances = sorted(maintenances, key=lambda maintenance: maintenance.start_day)
+    sorted_arrets = sorted(arrets, key=lambda arret: arret.jour_debut)
 
     cycle_start = 0
-    for maintenance in sorted_maintenances:
+    for arret in sorted_arrets:
         cycle_actual, cycle_remaining, depletion_day = _consume_cycle(
             requested_factors,
             cycle_start,
-            maintenance.end_day,
+            arret.jour_fin,
             initial_jepp,
         )
-        actual[cycle_start : maintenance.end_day] = cycle_actual
-        remaining[cycle_start : maintenance.end_day] = cycle_remaining
+        actual[cycle_start : arret.jour_fin] = cycle_actual
+        remaining[cycle_start : arret.jour_fin] = cycle_remaining
         if depletion_day is not None:
             depletion_days.append(depletion_day)
-        cycle_start = maintenance.end_day
+        cycle_start = arret.jour_fin
 
     cycle_actual, cycle_remaining, depletion_day = _consume_cycle(
         requested_factors,

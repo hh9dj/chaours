@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Generator
 from typing import Any
 
 from sqlalchemy import Engine, event
@@ -59,29 +58,16 @@ def build_session_factory(
     )
 
 
-engine = build_engine()
-SessionLocal = build_session_factory(engine)
-
-
-def create_db_and_tables(target_engine: Engine | None = None) -> None:
-    """Crée les tables SQLModel manquantes."""
-    SQLModel.metadata.create_all(target_engine or engine)
-
-
-def get_session() -> Generator[Session, None, None]:
-    """Dépendance FastAPI par défaut, liée au moteur du module."""
-    with SessionLocal() as session:
-        yield session
+def create_db_and_tables(target_engine: Engine) -> None:
+    """Crée les tables SQLModel manquantes sur le moteur donné."""
+    SQLModel.metadata.create_all(target_engine)
 
 
 __all__ = [
     "DEFAULT_DATABASE_URL",
     "Session",
-    "SessionLocal",
     "build_engine",
     "build_session_factory",
     "create_db_and_tables",
-    "engine",
-    "get_session",
     "resolve_database_url",
 ]

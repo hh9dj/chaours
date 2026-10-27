@@ -1,18 +1,18 @@
 import numpy as np
 
 from chaours.jepp import simulate_stock_cycles
-from chaours.types import FloatArray, Maintenance, OutageKind
+from chaours.types import Arret, FloatArray, TypeArret
 
 
 def _factors(*values: float) -> FloatArray:
     return np.array(values, dtype=np.float64)
 
 
-def _maintenance(start_day: int, end_day: int) -> Maintenance:
-    return Maintenance(
-        kind=OutageKind.ASR,
-        start_day=start_day,
-        end_day=end_day,
+def _arret(jour_debut: int, jour_fin: int) -> Arret:
+    return Arret(
+        type_arret=TypeArret.ASR,
+        jour_debut=jour_debut,
+        jour_fin=jour_fin,
     )
 
 
@@ -28,7 +28,7 @@ def test_no_depletion_when_stock_is_sufficient():
 
 def test_exact_consumption_at_stop_start_is_not_a_deficit():
     actual, remaining, depletion = simulate_stock_cycles(
-        _factors(0.5, 0.5, 0.5, 0.0), 1.5, (_maintenance(3, 4),)
+        _factors(0.5, 0.5, 0.5, 0.0), 1.5, (_arret(3, 4),)
     )
 
     np.testing.assert_allclose(actual, [0.5, 0.5, 0.5, 0.0])
@@ -48,7 +48,7 @@ def test_first_deficit_clips_production_to_remaining_stock():
 
 def test_production_stays_zero_after_deficit_until_recharge():
     actual, remaining, depletion = simulate_stock_cycles(
-        _factors(0.6, 0.6, 0.6, 0.0, 0.6), 1.0, (_maintenance(3, 4),)
+        _factors(0.6, 0.6, 0.6, 0.0, 0.6), 1.0, (_arret(3, 4),)
     )
 
     np.testing.assert_allclose(actual, [0.6, 0.4, 0.0, 0.0, 0.6])
@@ -58,7 +58,7 @@ def test_production_stays_zero_after_deficit_until_recharge():
 
 def test_recharge_resets_stock_at_stop_end():
     actual, remaining, depletion = simulate_stock_cycles(
-        _factors(0.5, 0.5, 0.0, 0.5, 0.5), 1.0, (_maintenance(2, 3),)
+        _factors(0.5, 0.5, 0.0, 0.5, 0.5), 1.0, (_arret(2, 3),)
     )
 
     np.testing.assert_allclose(actual, [0.5, 0.5, 0.0, 0.5, 0.5])
@@ -68,7 +68,7 @@ def test_recharge_resets_stock_at_stop_end():
 
 def test_zero_outage_days_keep_stock_constant_until_stop_end():
     actual, remaining, depletion = simulate_stock_cycles(
-        _factors(0.75, 0.0, 0.0, 0.25), 1.0, (_maintenance(1, 3),)
+        _factors(0.75, 0.0, 0.0, 0.25), 1.0, (_arret(1, 3),)
     )
 
     np.testing.assert_allclose(actual, [0.75, 0.0, 0.0, 0.25])
@@ -80,7 +80,7 @@ def test_multiple_stops_create_independent_cycles():
     actual, remaining, depletion = simulate_stock_cycles(
         _factors(0.25, 0.25, 0.0, 0.25, 0.25, 0.0, 0.25, 0.25),
         1.0,
-        (_maintenance(2, 3), _maintenance(5, 6)),
+        (_arret(2, 3), _arret(5, 6)),
     )
 
     np.testing.assert_allclose(actual, [0.25, 0.25, 0.0, 0.25, 0.25, 0.0, 0.25, 0.25])
@@ -92,7 +92,7 @@ def test_multiple_cycles_can_each_produce_a_depletion_day():
     actual, remaining, depletion = simulate_stock_cycles(
         _factors(0.6, 0.6, 0.0, 0.6, 0.6, 0.6, 0.0, 0.6, 0.6),
         1.0,
-        (_maintenance(2, 3), _maintenance(6, 7)),
+        (_arret(2, 3), _arret(6, 7)),
     )
 
     np.testing.assert_allclose(actual, [0.6, 0.4, 0.0, 0.6, 0.4, 0.0, 0.0, 0.6, 0.4])
@@ -110,7 +110,7 @@ def test_depletion_in_final_cycle_is_recorded_without_future_stop():
     assert depletion == (2,)
 
 
-def test_empty_maintenance_list_produces_a_single_cycle():
+def test_empty_arret_list_produces_a_single_cycle():
     actual, remaining, depletion = simulate_stock_cycles(
         _factors(0.5, 0.6), 1.0, ()
     )
@@ -130,11 +130,11 @@ def test_zero_initial_stock_with_positive_request_is_deficit_on_day_zero():
     assert depletion == (0,)
 
 
-def test_unsorted_maintenances_are_handled_chronologically():
+def test_unsorted_arrets_are_handled_chronologically():
     actual, remaining, depletion = simulate_stock_cycles(
         _factors(0.25, 0.25, 0.0, 0.25, 0.0, 0.25),
         1.0,
-        (_maintenance(4, 5), _maintenance(2, 3)),
+        (_arret(4, 5), _arret(2, 3)),
     )
 
     np.testing.assert_allclose(actual, [0.25, 0.25, 0.0, 0.25, 0.0, 0.25])
@@ -156,13 +156,13 @@ def test_remaining_jepp_is_clamped_at_zero():
 def test_inputs_are_not_mutated():
     requested = _factors(0.5, 0.0, 0.0, 0.5)
     requested_before = requested.copy()
-    maintenances = [_maintenance(1, 3)]
-    maintenances_before = list(maintenances)
+    arrets = [_arret(1, 3)]
+    arrets_before = list(arrets)
 
-    simulate_stock_cycles(requested, 2.0, maintenances)
+    simulate_stock_cycles(requested, 2.0, arrets)
 
     np.testing.assert_array_equal(requested, requested_before)
-    assert maintenances == maintenances_before
+    assert arrets == arrets_before
 
 
 def test_empty_horizon_returns_empty_outputs():

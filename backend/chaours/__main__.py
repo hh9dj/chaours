@@ -11,90 +11,92 @@ import numpy as np
 from chaours.constants import DEFAULT_HORIZON_DAYS
 from chaours.engine import NucliEngine
 from chaours.types import (
-    AlertKind,
-    Maintenance,
+    Arret,
     Modulation,
-    OutageKind,
-    Plant,
-    Scenario,
     Simulation,
+    SimulationTranche,
+    Tranche,
+    TypeAlerte,
+    TypeArret,
 )
 
 
-def mock_scenario() -> Scenario:
+def mock_simulation() -> Simulation:
     """Construit un scénario de démonstration avec plusieurs tranches."""
     horizon = DEFAULT_HORIZON_DAYS
-    usage_values = {"P1": 60.0, "P2": 85.0, "P3": 70.0}
 
-    plants = [
-        Simulation(
-            plant=Plant(
-                id="P1",
-                eic_code="MOCK-P1",
-                nominal_power_mw=900.0,
-                initial_jepp=300.0,
+    tranches = [
+        SimulationTranche(
+            tranche=Tranche(
+                identifiant="P1",
+                code_eic="MOCK-P1",
+                puissance_nominale_mw=900.0,
+                jepp_initial=300.0,
             ),
-            maintenances=[
-                Maintenance(kind=OutageKind.ASR, start_day=30, end_day=45),
-                Maintenance(kind=OutageKind.VP, start_day=200, end_day=230),
+            arrets=[
+                Arret(type_arret=TypeArret.ASR, jour_debut=30, jour_fin=45),
+                Arret(type_arret=TypeArret.VP, jour_debut=200, jour_fin=230),
             ],
         ),
-        Simulation(
-            plant=Plant(
-                id="P2",
-                eic_code="MOCK-P2",
-                nominal_power_mw=1_300.0,
-                initial_jepp=280.0,
+        SimulationTranche(
+            tranche=Tranche(
+                identifiant="P2",
+                code_eic="MOCK-P2",
+                puissance_nominale_mw=1_300.0,
+                jepp_initial=280.0,
             ),
-            maintenances=[
-                Maintenance(kind=OutageKind.VD, start_day=120, end_day=170),
+            arrets=[
+                Arret(
+                    type_arret=TypeArret.VD,
+                    jour_debut=120,
+                    jour_fin=170,
+                ),
             ],
             modulations=[
-                Modulation(start_day=10, end_day=20, factor=0.6),
+                Modulation(jour_debut=10, jour_fin=20, facteur=0.6),
             ],
         ),
-        Simulation(
-            plant=Plant(
-                id="P3",
-                eic_code="MOCK-P3",
-                nominal_power_mw=900.0,
-                initial_jepp=260.0,
+        SimulationTranche(
+            tranche=Tranche(
+                identifiant="P3",
+                code_eic="MOCK-P3",
+                puissance_nominale_mw=900.0,
+                jepp_initial=260.0,
             ),
-            maintenances=[
-                Maintenance(kind=OutageKind.ASR, start_day=80, end_day=95),
+            arrets=[
+                Arret(type_arret=TypeArret.ASR, jour_debut=80, jour_fin=95),
             ],
             modulations=[
-                Modulation(start_day=150, end_day=180, factor=0.35),
+                Modulation(jour_debut=150, jour_fin=180, facteur=0.35),
             ],
         ),
     ]
 
-    return Scenario(
-        name="mock",
-        horizon_days=horizon,
-        spot_prices=[80.0] * horizon,
-        demand_mwh=[52_000.0] * horizon,
-        usage_values_eur_mwh=usage_values,
-        plants=plants,
+    return Simulation(
+        nom="mock",
+        horizon_jours=horizon,
+        prix_spot_eur_mwh=[80.0] * horizon,
+        demande_nationale_mwh=[52_000.0] * horizon,
+        valeur_usage_eur_mwh=[70.0] * horizon,
+        tranches=tranches,
     )
 
 
-def benchmark_scenario() -> Scenario:
+def benchmark_simulation() -> Simulation:
     """Construit un scénario reproductible de 56 tranches sur 365 jours."""
     horizon = 365
     rng = np.random.default_rng(20261025)
 
-    usage_values: dict[str, float] = {}
-    plants: list[Simulation] = []
+    tranches: list[SimulationTranche] = []
 
     for index in range(1, 57):
-        plant_id = f"B{index:02d}"
+        identifiant = f"B{index:02d}"
         start = 15 + (index * 6) % 320
         length = 12 + (index % 4) * 5
-        maintenance_kind = (
-            OutageKind.ASR,
-            OutageKind.VP,
-            OutageKind.VD,
+        type_arret = (
+            TypeArret.ASR,
+            TypeArret.VP,
+            TypeArret.VD,
         )[index % 3]
 
         modulations: list[Modulation] = []
@@ -102,71 +104,80 @@ def benchmark_scenario() -> Scenario:
             modulation_start = 5 + (index * 3) % 340
             modulations.append(
                 Modulation(
-                    start_day=modulation_start,
-                    end_day=modulation_start + 10,
-                    factor=float(0.3 + (index % 4) * 0.15),
+                    jour_debut=modulation_start,
+                    jour_fin=modulation_start + 10,
+                    facteur=float(0.3 + (index % 4) * 0.15),
                 )
             )
 
-        plants.append(
-            Simulation(
-                plant=Plant(
-                    id=plant_id,
-                    eic_code=f"BENCH-{index:02d}",
-                    nominal_power_mw=float(rng.integers(900, 1_500)),
-                    initial_jepp=float(rng.integers(240, 320)),
+        tranches.append(
+            SimulationTranche(
+                tranche=Tranche(
+                    identifiant=identifiant,
+                    code_eic=f"BENCH-{index:02d}",
+                    puissance_nominale_mw=float(
+                        rng.integers(900, 1_500)
+                    ),
+                    jepp_initial=float(rng.integers(240, 320)),
                 ),
-                maintenances=[
-                    Maintenance(
-                        kind=maintenance_kind,
-                        start_day=start,
-                        end_day=start + length,
+                arrets=[
+                    Arret(
+                        type_arret=type_arret,
+                        jour_debut=start,
+                        jour_fin=start + length,
                     ),
                 ],
                 modulations=modulations,
             )
         )
-        usage_values[plant_id] = float(55.0 + (index % 5) * 5.0)
 
-    return Scenario(
-        name="benchmark-56x365",
-        horizon_days=horizon,
-        spot_prices=rng.normal(80.0, 20.0, horizon).tolist(),
-        demand_mwh=[58_000.0] * horizon,
-        usage_values_eur_mwh=usage_values,
-        plants=plants,
+    return Simulation(
+        nom="benchmark-56x365",
+        horizon_jours=horizon,
+        prix_spot_eur_mwh=rng.normal(80.0, 20.0, horizon).tolist(),
+        demande_nationale_mwh=[58_000.0] * horizon,
+        valeur_usage_eur_mwh=[70.0] * horizon,
+        tranches=tranches,
     )
 
 
-def _print_scenario_result(scenario: Scenario) -> None:
-    result = NucliEngine().run(scenario)
-    alert_counts = Counter(alert.kind for alert in result.alerts)
+def _print_simulation_result(simulation: Simulation) -> None:
+    result = NucliEngine().run(simulation)
+    alert_counts = Counter(
+        alerte.type_alerte for alerte in result.alertes
+    )
 
-    print(f"scenario={result.scenario_id} horizon={scenario.horizon_days}d")
-    print(f"plants={len(result.plants)}")
-    print(f"deficit_days={len(result.deficit_days)}")
-    for kind in AlertKind:
-        print(f"alerts[{kind.value}]={alert_counts.get(kind, 0)}")
-    print(f"alerts_total={len(result.alerts)}")
-    print(f"execution_time_ms={result.execution_time_ms:.3f}")
+    print(
+        f"simulation={result.simulation_id} "
+        f"horizon={simulation.horizon_jours}d"
+    )
+    print(f"tranches={len(result.tranches)}")
+    print(f"jours_deficit={len(result.jours_deficit)}")
+    for type_alerte in TypeAlerte:
+        print(
+            f"alertes[{type_alerte.value}]="
+            f"{alert_counts.get(type_alerte, 0)}"
+        )
+    print(f"alertes_total={len(result.alertes)}")
+    print(f"execution_time_ms={result.duree_execution_ms:.3f}")
 
 
 def _run_benchmark() -> None:
-    scenario = benchmark_scenario()
+    simulation = benchmark_simulation()
     engine = NucliEngine()
     durations: list[float] = []
 
     for _ in range(20):
         started = time.perf_counter()
-        engine.run(scenario)
+        engine.run(simulation)
         durations.append((time.perf_counter() - started) * 1000.0)
 
     minimum = min(durations)
     median = statistics.median(durations)
     maximum = max(durations)
 
-    print(f"scenario={scenario.name} horizon={scenario.horizon_days}d")
-    print(f"plants={len(scenario.plants)}")
+    print(f"simulation={simulation.nom} horizon={simulation.horizon_jours}d")
+    print(f"tranches={len(simulation.tranches)}")
     print(f"runs={len(durations)}")
     print(f"min_ms={minimum:.3f}")
     print(f"median_ms={median:.3f}")
@@ -190,7 +201,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         _run_benchmark()
         return
 
-    _print_scenario_result(mock_scenario())
+    _print_simulation_result(mock_simulation())
 
 
 if __name__ == "__main__":

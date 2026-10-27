@@ -7,12 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from chaours.api.context import create_lifespan
 from chaours.api.routes import simulations
-from chaours.db.session import (
-    build_engine,
-    build_session_factory,
-    create_db_and_tables,
-)
 
 LOCAL_FRONTEND_ORIGINS = [
     "http://localhost:5173",
@@ -36,18 +32,13 @@ async def _pydantic_validation_handler(
 
 
 def create_app(database_url: str | None = None) -> FastAPI:
-    """Construit l'application et initialise la base SQLite."""
-    app_engine = build_engine(database_url)
-    session_factory = build_session_factory(app_engine)
-    create_db_and_tables(app_engine)
-
+    """Construit l'application et configure son cycle de vie."""
     application = FastAPI(
         title="CHAOURS API",
         version="0.1.0",
         description="API de simulation des arrêts nucléaires.",
+        lifespan=create_lifespan(database_url),
     )
-    application.state.engine = app_engine
-    application.state.session_factory = session_factory
 
     application.add_middleware(
         CORSMiddleware,

@@ -8,18 +8,23 @@ from sqlalchemy import func, select
 from sqlmodel import Session
 
 from chaours.db.models import (
-    MaintenanceTable,
+    ArretTable,
+    DonneeJournaliereTable,
     ModulationTable,
-    PlantTable,
-    ScenarioTable,
+    SimulationTable,
+    TrancheTable,
 )
 from chaours.db.repository import (
-    create_scenario,
-    delete_scenario,
-    duplicate_scenario,
-    get_scenario,
-    replace_maintenances,
+    add_tranche,
+    create_simulation,
+    delete_simulation,
+    duplicate_simulation,
+    get_simulation,
+    list_simulations,
+    replace_arrets,
     replace_modulations,
+    update_simulation,
+    update_tranche,
 )
 from chaours.db.session import (
     build_engine,
@@ -27,12 +32,15 @@ from chaours.db.session import (
     create_db_and_tables,
 )
 from chaours.types import (
-    Maintenance,
+    Arret,
+    ConfigurationTranche,
     Modulation,
-    OutageKind,
-    Plant,
-    Scenario,
+    ParametresSimulation,
     Simulation,
+    SimulationCreation,
+    SimulationTranche,
+    Tranche,
+    TypeArret,
 )
 
 
@@ -45,34 +53,70 @@ def session() -> Generator[Session, None, None]:
         yield database_session
 
 
-def _scenario(name: str = "scenario") -> Scenario:
-    return Scenario(
-        name=name,
-        horizon_days=10,
-        spot_prices=[10.5, 20.0, 30.25, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0],
-        demand_mwh=[1_000.0] * 10,
-        usage_values_eur_mwh={"P1": 60.5, "P2": 72.25},
-        plants=[
-            Simulation(
-                plant=Plant(
-                    id="P1",
-                    eic_code="EIC-P1",
-                    nominal_power_mw=900.0,
-                    initial_jepp=300.5,
+def _simulation(name: str = "simulation") -> Simulation:
+    return Simulation(
+        nom=name,
+        horizon_jours=10,
+        prix_spot_eur_mwh=[
+            10.5,
+            20.0,
+            30.25,
+            40.0,
+            50.0,
+            60.0,
+            70.0,
+            80.0,
+            90.0,
+            100.0,
+        ],
+        demande_nationale_mwh=[1_000.0] * 10,
+        valeur_usage_eur_mwh=[60.5] * 10,
+        tranches=[
+            SimulationTranche(
+                tranche=Tranche(
+                    identifiant="P1",
+                    code_eic="EIC-P1",
+                    puissance_nominale_mw=900.0,
+                    jepp_initial=300.5,
                 ),
-                maintenances=[Maintenance(kind=OutageKind.ASR, start_day=1, end_day=3)],
-                modulations=[Modulation(start_day=4, end_day=6, factor=0.5)],
+                arrets=[
+                    Arret(
+                        type_arret=TypeArret.ASR,
+                        jour_debut=1,
+                        jour_fin=3,
+                    )
+                ],
+                modulations=[
+                    Modulation(jour_debut=4, jour_fin=6, facteur=0.5)
+                ],
             ),
-            Simulation(
-                plant=Plant(
-                    id="P2",
-                    eic_code="EIC-P2",
-                    nominal_power_mw=1_300.25,
-                    initial_jepp=280.0,
+            SimulationTranche(
+                tranche=Tranche(
+                    identifiant="P2",
+                    code_eic="EIC-P2",
+                    puissance_nominale_mw=1_300.25,
+                    jepp_initial=280.0,
                 ),
-                maintenances=[Maintenance(kind=OutageKind.VD, start_day=7, end_day=9)],
+                arrets=[
+                    Arret(
+                        type_arret=TypeArret.VD,
+                        jour_debut=7,
+                        jour_fin=9,
+                    )
+                ],
             ),
         ],
+    )
+
+
+def _creation(simulation: Simulation) -> SimulationCreation:
+    return SimulationCreation(
+        nom=simulation.nom,
+        horizon_jours=simulation.horizon_jours,
+        prix_spot_eur_mwh=list(simulation.prix_spot_eur_mwh),
+        demande_nationale_mwh=list(simulation.demande_nationale_mwh),
+        valeur_usage_eur_mwh=list(simulation.valeur_usage_eur_mwh),
+        tranches=list(simulation.tranches),
     )
 
 
@@ -81,240 +125,485 @@ def _count(session: Session, model: type) -> int:
     return int(count or 0)
 
 
-def test_create_and_get_scenario_round_trip(session: Session):
-    scenario = _scenario()
+def test_create_and_get_simulation_round_trip(session: Session):
+    simulation = _simulation()
 
-    created = create_scenario(session, scenario)
-    loaded = get_scenario(session, scenario.scenario_id)
+    created = create_simulation(session, _creation(simulation))
+    loaded = get_simulation(session, created.simulation_id)
 
     assert loaded is not None
-    assert created.scenario_id == scenario.scenario_id
-    assert loaded.scenario_id == scenario.scenario_id
-    assert loaded.name == "scenario"
-    assert loaded.horizon_days == 10
-    assert loaded.spot_prices == scenario.spot_prices
-    assert loaded.demand_mwh == scenario.demand_mwh
-    assert loaded.usage_values_eur_mwh == {
-        "P1": 60.5,
-        "P2": 72.25,
+    assert created.simulation_id != simulation.simulation_id
+    assert loaded.simulation_id == created.simulation_id
+    assert loaded.nom == "simulation"
+    assert loaded.horizon_jours == 10
+    assert loaded.prix_spot_eur_mwh == simulation.prix_spot_eur_mwh
+    assert loaded.demande_nationale_mwh == simulation.demande_nationale_mwh
+    assert loaded.valeur_usage_eur_mwh == simulation.valeur_usage_eur_mwh
+    assert [entry.tranche.identifiant for entry in loaded.tranches] == [
+        "P1",
+        "P2",
+    ]
+    assert loaded.tranches[0].tranche.puissance_nominale_mw == 900.0
+    assert loaded.tranches[0].tranche.jepp_initial == 300.5
+    assert loaded.tranches[0].arrets == [
+        Arret(type_arret=TypeArret.ASR, jour_debut=1, jour_fin=3)
+    ]
+    assert loaded.tranches[0].modulations == [
+        Modulation(jour_debut=4, jour_fin=6, facteur=0.5)
+    ]
+    assert loaded.tranches[1].arrets == [
+        Arret(type_arret=TypeArret.VD, jour_debut=7, jour_fin=9)
+    ]
+
+
+def test_get_unknown_simulation_returns_none(session: Session):
+    assert get_simulation(session, _simulation().simulation_id) is None
+
+
+def test_list_simulations_returns_summaries(session: Session):
+    first = create_simulation(session, _creation(_simulation("first")))
+    second = create_simulation(session, _creation(_simulation("second")))
+
+    summaries = list_simulations(session)
+
+    assert {summary.simulation_id for summary in summaries} == {
+        first.simulation_id,
+        second.simulation_id,
     }
-    assert [entry.plant.id for entry in loaded.plants] == ["P1", "P2"]
-    assert loaded.plants[0].plant.nominal_power_mw == 900.0
-    assert loaded.plants[0].plant.initial_jepp == 300.5
-    assert loaded.plants[0].maintenances == [
-        Maintenance(kind=OutageKind.ASR, start_day=1, end_day=3)
-    ]
-    assert loaded.plants[0].modulations == [Modulation(start_day=4, end_day=6, factor=0.5)]
-    assert loaded.plants[1].maintenances == [
-        Maintenance(kind=OutageKind.VD, start_day=7, end_day=9)
-    ]
+    assert {summary.nombre_tranches for summary in summaries} == {2}
+    assert {summary.horizon_jours for summary in summaries} == {10}
 
 
-def test_get_unknown_scenario_returns_none(session: Session):
-    assert get_scenario(session, _scenario().scenario_id) is None
-
-
-def test_delete_scenario_cascades_to_plants_and_schedules(session: Session):
-    scenario = _scenario()
-    create_scenario(session, scenario)
-    assert _count(session, PlantTable) == 2
-    assert _count(session, MaintenanceTable) == 2
+def test_delete_simulation_cascades_to_children(session: Session):
+    simulation = create_simulation(session, _creation(_simulation()))
+    assert _count(session, TrancheTable) == 2
+    assert _count(session, DonneeJournaliereTable) == 10
+    assert _count(session, ArretTable) == 2
     assert _count(session, ModulationTable) == 1
 
-    assert delete_scenario(session, scenario.scenario_id) is True
-    assert get_scenario(session, scenario.scenario_id) is None
-    assert _count(session, ScenarioTable) == 0
-    assert _count(session, PlantTable) == 0
-    assert _count(session, MaintenanceTable) == 0
+    assert delete_simulation(session, simulation.simulation_id) is True
+    assert get_simulation(session, simulation.simulation_id) is None
+    assert _count(session, SimulationTable) == 0
+    assert _count(session, TrancheTable) == 0
+    assert _count(session, DonneeJournaliereTable) == 0
+    assert _count(session, ArretTable) == 0
     assert _count(session, ModulationTable) == 0
 
 
-def test_delete_unknown_scenario_returns_false(session: Session):
-    assert delete_scenario(session, _scenario().scenario_id) is False
+def test_delete_unknown_simulation_returns_false(session: Session):
+    assert delete_simulation(session, _simulation().simulation_id) is False
 
 
-def test_duplicate_scenario_gets_new_id_and_suffixed_name(session: Session):
-    original = _scenario(name="plan")
-    create_scenario(session, original)
+def test_duplicate_simulation_gets_new_id_and_suffixed_name(
+    session: Session,
+):
+    original = create_simulation(session, _creation(_simulation("plan")))
 
-    duplicate = duplicate_scenario(session, original.scenario_id)
+    duplicate = duplicate_simulation(session, original.simulation_id)
 
     assert duplicate is not None
-    assert duplicate.scenario_id != original.scenario_id
-    assert duplicate.name == "plan (copie)"
-    assert duplicate.usage_values_eur_mwh == original.usage_values_eur_mwh
-    assert [entry.plant.id for entry in duplicate.plants] == ["P1", "P2"]
-    assert duplicate.plants[0].maintenances == [
-        Maintenance(kind=OutageKind.ASR, start_day=1, end_day=3)
+    assert duplicate.simulation_id != original.simulation_id
+    assert duplicate.nom == "plan (copie)"
+    assert duplicate.valeur_usage_eur_mwh == original.valeur_usage_eur_mwh
+    assert [entry.tranche.identifiant for entry in duplicate.tranches] == [
+        "P1",
+        "P2",
     ]
-    assert get_scenario(session, duplicate.scenario_id) is not None
-    assert get_scenario(session, original.scenario_id) is not None
+    assert duplicate.tranches[0].arrets == [
+        Arret(type_arret=TypeArret.ASR, jour_debut=1, jour_fin=3)
+    ]
+    assert get_simulation(session, duplicate.simulation_id) is not None
+    assert get_simulation(session, original.simulation_id) is not None
 
 
 def test_duplicate_name_is_trimmed_to_model_limit(session: Session):
-    original = _scenario(name="x" * 200)
-    create_scenario(session, original)
+    original = create_simulation(
+        session,
+        _creation(_simulation("x" * 200)),
+    )
 
-    duplicate = duplicate_scenario(session, original.scenario_id)
+    duplicate = duplicate_simulation(session, original.simulation_id)
 
     assert duplicate is not None
-    assert len(duplicate.name) == 200
-    assert duplicate.name.endswith(" (copie)")
+    assert len(duplicate.nom) == 200
+    assert duplicate.nom.endswith(" (copie)")
 
 
-def test_duplicate_unknown_scenario_returns_none(session: Session):
-    assert duplicate_scenario(session, _scenario().scenario_id) is None
+def test_duplicate_unknown_simulation_returns_none(session: Session):
+    assert duplicate_simulation(session, _simulation().simulation_id) is None
 
 
-def test_replace_maintenances_persists_validated_scenario(session: Session):
-    scenario = _scenario()
-    create_scenario(session, scenario)
-    replacement = [Maintenance(kind=OutageKind.VP, start_day=2, end_day=4)]
+def test_update_simulation_replaces_parameters_and_series(session: Session):
+    simulation = create_simulation(session, _creation(_simulation()))
+    payload = ParametresSimulation(
+        nom="renamed",
+        horizon_jours=10,
+        prix_spot_eur_mwh=[1.0] * 10,
+        demande_nationale_mwh=[2.0] * 10,
+        valeur_usage_eur_mwh=[3.0] * 10,
+    )
 
-    updated = replace_maintenances(
+    updated = update_simulation(session, simulation.simulation_id, payload)
+
+    assert updated is not None
+    assert updated.nom == "renamed"
+    assert updated.prix_spot_eur_mwh == [1.0] * 10
+    loaded = get_simulation(session, simulation.simulation_id)
+    assert loaded is not None
+    assert loaded.demande_nationale_mwh == [2.0] * 10
+    assert loaded.valeur_usage_eur_mwh == [3.0] * 10
+
+
+def test_update_simulation_rejects_schedules_outside_new_horizon(
+    session: Session,
+):
+    simulation = create_simulation(session, _creation(_simulation()))
+    payload = ParametresSimulation(
+        nom="shorter",
+        horizon_jours=5,
+        prix_spot_eur_mwh=[1.0] * 5,
+        demande_nationale_mwh=[2.0] * 5,
+        valeur_usage_eur_mwh=[3.0] * 5,
+    )
+
+    with pytest.raises(ValidationError):
+        update_simulation(session, simulation.simulation_id, payload)
+
+    loaded = get_simulation(session, simulation.simulation_id)
+    assert loaded is not None
+    assert loaded.horizon_jours == 10
+
+
+def test_update_unknown_simulation_returns_none(session: Session):
+    payload = ParametresSimulation(
+        nom="unknown",
+        horizon_jours=4,
+        prix_spot_eur_mwh=[1.0] * 4,
+        demande_nationale_mwh=[2.0] * 4,
+        valeur_usage_eur_mwh=[3.0] * 4,
+    )
+
+    assert update_simulation(
         session,
-        scenario.scenario_id,
+        _simulation().simulation_id,
+        payload,
+    ) is None
+
+
+def test_update_tranche_keeps_identifier_and_replaces_configuration(
+    session: Session,
+):
+    simulation = create_simulation(session, _creation(_simulation()))
+    payload = ConfigurationTranche(
+        code_eic="EIC-NEW",
+        puissance_nominale_mw=1_100.0,
+        jepp_initial=250.0,
+    )
+
+    updated = update_tranche(
+        session,
+        simulation.simulation_id,
+        "P1",
+        payload,
+    )
+
+    assert updated is not None
+    assert updated.tranches[0].tranche.identifiant == "P1"
+    assert updated.tranches[0].tranche.code_eic == "EIC-NEW"
+    loaded = get_simulation(session, simulation.simulation_id)
+    assert loaded is not None
+    assert loaded.tranches[0].tranche.puissance_nominale_mw == 1_100.0
+    assert loaded.tranches[0].tranche.jepp_initial == 250.0
+
+
+def test_update_tranche_returns_none_for_unknown_tranche(session: Session):
+    simulation = create_simulation(session, _creation(_simulation()))
+    payload = ConfigurationTranche(
+        code_eic="EIC-NEW",
+        puissance_nominale_mw=1_100.0,
+        jepp_initial=250.0,
+    )
+
+    assert update_tranche(
+        session,
+        simulation.simulation_id,
+        "UNKNOWN",
+        payload,
+    ) is None
+
+
+def test_replace_arrets_persists_validated_simulation(session: Session):
+    simulation = create_simulation(session, _creation(_simulation()))
+    replacement = [
+        Arret(type_arret=TypeArret.VP, jour_debut=2, jour_fin=4)
+    ]
+
+    updated = replace_arrets(
+        session,
+        simulation.simulation_id,
         "P1",
         replacement,
     )
 
     assert updated is not None
-    assert updated.plants[0].maintenances == replacement
-    loaded = get_scenario(session, scenario.scenario_id)
+    assert updated.tranches[0].arrets == replacement
+    loaded = get_simulation(session, simulation.simulation_id)
     assert loaded is not None
-    assert loaded.plants[0].maintenances == replacement
-    assert loaded.plants[1].maintenances == [
-        Maintenance(kind=OutageKind.VD, start_day=7, end_day=9)
+    assert loaded.tranches[0].arrets == replacement
+    assert loaded.tranches[1].arrets == [
+        Arret(type_arret=TypeArret.VD, jour_debut=7, jour_fin=9)
     ]
 
 
-def test_replace_modulations_persists_validated_scenario(session: Session):
-    scenario = _scenario()
-    create_scenario(session, scenario)
-    replacement = [Modulation(start_day=1, end_day=3, factor=0.25), Modulation(start_day=3, end_day=5, factor=0.75)]
+def test_replace_modulations_persists_validated_simulation(
+    session: Session,
+):
+    simulation = create_simulation(session, _creation(_simulation()))
+    replacement = [
+        Modulation(jour_debut=1, jour_fin=3, facteur=0.25),
+        Modulation(jour_debut=3, jour_fin=5, facteur=0.75),
+    ]
 
     updated = replace_modulations(
         session,
-        scenario.scenario_id,
+        simulation.simulation_id,
         "P1",
         replacement,
     )
 
     assert updated is not None
-    assert updated.plants[0].modulations == replacement
-    loaded = get_scenario(session, scenario.scenario_id)
+    assert updated.tranches[0].modulations == replacement
+    loaded = get_simulation(session, simulation.simulation_id)
     assert loaded is not None
-    assert loaded.plants[0].modulations == replacement
+    assert loaded.tranches[0].modulations == replacement
 
 
-def test_replace_schedules_returns_none_for_unknown_scenario(session: Session):
-    assert (
-        replace_maintenances(
-            session,
-            _scenario().scenario_id,
-            "P1",
-            [],
-        )
-        is None
-    )
-    assert (
-        replace_modulations(
-            session,
-            _scenario().scenario_id,
-            "P1",
-            [],
-        )
-        is None
-    )
-
-
-def test_replace_schedules_returns_none_for_unknown_plant(session: Session):
-    scenario = _scenario()
-    create_scenario(session, scenario)
-
-    assert (
-        replace_maintenances(
-            session,
-            scenario.scenario_id,
-            "UNKNOWN",
-            [],
-        )
-        is None
-    )
-    assert (
-        replace_modulations(
-            session,
-            scenario.scenario_id,
-            "UNKNOWN",
-            [],
-        )
-        is None
-    )
-
-
-def test_replace_maintenances_rejects_overlap_without_persisting(
+def test_replace_schedules_returns_none_for_unknown_simulation(
     session: Session,
 ):
-    scenario = _scenario()
-    create_scenario(session, scenario)
+    assert (
+        replace_arrets(
+            session,
+            _simulation().simulation_id,
+            "P1",
+            [],
+        )
+        is None
+    )
+    assert (
+        replace_modulations(
+            session,
+            _simulation().simulation_id,
+            "P1",
+            [],
+        )
+        is None
+    )
+
+
+def test_replace_schedules_returns_none_for_unknown_tranche(
+    session: Session,
+):
+    simulation = create_simulation(session, _creation(_simulation()))
+
+    assert (
+        replace_arrets(
+            session,
+            simulation.simulation_id,
+            "UNKNOWN",
+            [],
+        )
+        is None
+    )
+    assert (
+        replace_modulations(
+            session,
+            simulation.simulation_id,
+            "UNKNOWN",
+            [],
+        )
+        is None
+    )
+
+
+def test_replace_arrets_rejects_overlap_without_persisting(
+    session: Session,
+):
+    simulation = create_simulation(session, _creation(_simulation()))
 
     with pytest.raises(ValidationError):
-        replace_maintenances(
+        replace_arrets(
             session,
-            scenario.scenario_id,
+            simulation.simulation_id,
             "P1",
             [
-                Maintenance(kind=OutageKind.ASR, start_day=1, end_day=4),
-                Maintenance(kind=OutageKind.VP, start_day=3, end_day=5),
+                Arret(
+                    type_arret=TypeArret.ASR,
+                    jour_debut=1,
+                    jour_fin=4,
+                ),
+                Arret(
+                    type_arret=TypeArret.VP,
+                    jour_debut=3,
+                    jour_fin=5,
+                ),
             ],
         )
 
-    loaded = get_scenario(session, scenario.scenario_id)
+    loaded = get_simulation(session, simulation.simulation_id)
     assert loaded is not None
-    assert loaded.plants[0].maintenances == [
-        Maintenance(kind=OutageKind.ASR, start_day=1, end_day=3)
+    assert loaded.tranches[0].arrets == [
+        Arret(type_arret=TypeArret.ASR, jour_debut=1, jour_fin=3)
     ]
 
 
-def test_replace_maintenances_rejects_window_outside_horizon(session: Session):
-    scenario = _scenario()
-    create_scenario(session, scenario)
+def test_replace_arrets_rejects_window_outside_horizon(session: Session):
+    simulation = create_simulation(session, _creation(_simulation()))
 
     with pytest.raises(ValidationError):
-        replace_maintenances(
+        replace_arrets(
             session,
-            scenario.scenario_id,
+            simulation.simulation_id,
             "P1",
-            [Maintenance(kind=OutageKind.ASR, start_day=1, end_day=11)],
+            [Arret(type_arret=TypeArret.ASR, jour_debut=1, jour_fin=11)],
         )
 
-    loaded = get_scenario(session, scenario.scenario_id)
+    loaded = get_simulation(session, simulation.simulation_id)
     assert loaded is not None
-    assert loaded.plants[0].maintenances == [
-        Maintenance(kind=OutageKind.ASR, start_day=1, end_day=3)
+    assert loaded.tranches[0].arrets == [
+        Arret(type_arret=TypeArret.ASR, jour_debut=1, jour_fin=3)
     ]
 
 
-def test_scenarios_are_isolated(session: Session):
-    first = _scenario(name="first")
-    second = _scenario(name="second")
-    create_scenario(session, first)
-    create_scenario(session, second)
+def test_simulations_are_isolated(session: Session):
+    first = create_simulation(session, _creation(_simulation("first")))
+    second = create_simulation(session, _creation(_simulation("second")))
 
-    replace_maintenances(
+    replace_arrets(
         session,
-        first.scenario_id,
+        first.simulation_id,
         "P1",
-        [Maintenance(kind=OutageKind.VP, start_day=2, end_day=4)],
+        [Arret(type_arret=TypeArret.VP, jour_debut=2, jour_fin=4)],
     )
 
-    loaded_first = get_scenario(session, first.scenario_id)
-    loaded_second = get_scenario(session, second.scenario_id)
+    loaded_first = get_simulation(session, first.simulation_id)
+    loaded_second = get_simulation(session, second.simulation_id)
     assert loaded_first is not None
     assert loaded_second is not None
-    assert loaded_first.plants[0].maintenances == [
-        Maintenance(kind=OutageKind.VP, start_day=2, end_day=4)
+    assert loaded_first.tranches[0].arrets == [
+        Arret(type_arret=TypeArret.VP, jour_debut=2, jour_fin=4)
     ]
-    assert loaded_second.plants[0].maintenances == [
-        Maintenance(kind=OutageKind.ASR, start_day=1, end_day=3)
+    assert loaded_second.tranches[0].arrets == [
+        Arret(type_arret=TypeArret.ASR, jour_debut=1, jour_fin=3)
     ]
+
+
+def test_get_simulation_rejects_missing_daily_row(session: Session):
+    simulation = create_simulation(session, _creation(_simulation()))
+    row = session.get(
+        DonneeJournaliereTable,
+        (simulation.simulation_id, 5),
+    )
+    assert row is not None
+    session.delete(row)
+    session.commit()
+
+    with pytest.raises(ValueError):
+        get_simulation(session, simulation.simulation_id)
+
+
+def test_get_simulation_rejects_out_of_horizon_daily_row(
+    session: Session,
+):
+    simulation = create_simulation(session, _creation(_simulation()))
+    session.add(
+        DonneeJournaliereTable(
+            simulation_id=simulation.simulation_id,
+            jour=10,
+            prix_spot_eur_mwh=1.0,
+            demande_nationale_mwh=1.0,
+            valeur_usage_eur_mwh=1.0,
+        )
+    )
+    session.commit()
+
+    with pytest.raises(ValueError):
+        get_simulation(session, simulation.simulation_id)
+
+
+def test_create_and_get_simulation_without_tranches(session: Session):
+    simulation = _simulation()
+    simulation.tranches = []
+
+    created = create_simulation(session, _creation(simulation))
+    loaded = get_simulation(session, created.simulation_id)
+
+    assert loaded is not None
+    assert loaded.tranches == []
+    summaries = list_simulations(session)
+    assert summaries[0].nombre_tranches == 0
+
+
+def test_add_tranche_to_empty_simulation(session: Session):
+    simulation = _simulation()
+    simulation.tranches = []
+    created = create_simulation(session, _creation(simulation))
+    entry = SimulationTranche(
+        tranche=Tranche(
+            identifiant="P1",
+            code_eic="EIC-P1",
+            puissance_nominale_mw=900.0,
+            jepp_initial=300.0,
+        ),
+        arrets=[
+            Arret(type_arret=TypeArret.ASR, jour_debut=1, jour_fin=3)
+        ],
+    )
+
+    updated = add_tranche(session, created.simulation_id, entry)
+
+    assert updated is not None
+    assert [item.tranche.identifiant for item in updated.tranches] == ["P1"]
+    loaded = get_simulation(session, created.simulation_id)
+    assert loaded is not None
+    assert loaded.tranches[0].tranche.identifiant == "P1"
+    assert loaded.tranches[0].arrets == [
+        Arret(type_arret=TypeArret.ASR, jour_debut=1, jour_fin=3)
+    ]
+
+
+def test_add_tranche_rejects_duplicate_identifier(session: Session):
+    simulation = create_simulation(session, _creation(_simulation()))
+    duplicate = SimulationTranche(
+        tranche=Tranche(
+            identifiant="P1",
+            code_eic="EIC-DUP",
+            puissance_nominale_mw=900.0,
+            jepp_initial=300.0,
+        )
+    )
+
+    with pytest.raises(ValidationError):
+        add_tranche(session, simulation.simulation_id, duplicate)
+
+    loaded = get_simulation(session, simulation.simulation_id)
+    assert loaded is not None
+    assert [item.tranche.identifiant for item in loaded.tranches] == [
+        "P1",
+        "P2",
+    ]
+
+
+def test_add_tranche_returns_none_for_unknown_simulation(
+    session: Session,
+):
+    entry = SimulationTranche(
+        tranche=Tranche(
+            identifiant="P1",
+            code_eic="EIC-P1",
+            puissance_nominale_mw=900.0,
+            jepp_initial=300.0,
+        )
+    )
+
+    assert add_tranche(session, _simulation().simulation_id, entry) is None

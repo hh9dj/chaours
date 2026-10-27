@@ -4,11 +4,11 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from chaours.types import BoolArray, FloatArray, Maintenance, Modulation
+from chaours.types import Arret, BoolArray, FloatArray, Modulation
 
 
 def maintenance_mask(
-    maintenances: Sequence[Maintenance],
+    arrets: Sequence[Arret],
     horizon: int,
 ) -> BoolArray:
     """Construit le masque des arrêts d'une tranche.
@@ -18,8 +18,8 @@ def maintenance_mask(
     """
     mask = np.zeros(horizon, dtype=np.bool_)
 
-    for maintenance in maintenances:
-        mask[maintenance.start_day : maintenance.end_day] = True
+    for arret in arrets:
+        mask[arret.jour_debut : arret.jour_fin] = True
 
     return mask
 
@@ -38,14 +38,16 @@ def apply_manual_modulation(
 ) -> FloatArray:
     """Applique les fenêtres de modulation de l'utilisateur.
 
-    Chaque fenêtre force ``factor`` sur l'intervalle de jours semi-ouvert
-    ``[start_day, end_day)``. ``factors`` a la forme ``(horizon,)`` et
+    Chaque fenêtre force ``facteur`` sur l'intervalle de jours semi-ouvert
+    ``[jour_debut, jour_fin)``. ``factors`` a la forme ``(horizon,)`` et
     appartient à une seule tranche. Renvoie un nouveau tableau de même forme.
     """
     result = factors.copy()
 
     for modulation in modulations:
-        result[modulation.start_day : modulation.end_day] = modulation.factor
+        result[
+            modulation.jour_debut : modulation.jour_fin
+        ] = modulation.facteur
 
     return result
 

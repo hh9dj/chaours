@@ -24,7 +24,7 @@ IntArray = NDArray[np.intp]
 MAX_HORIZON_DAYS = 7305
 
 
-class OutageKind(str, Enum):
+class TypeArret(str, Enum):
     """Type d'arrêt de tranche.
 
     - ``ASR`` : arrêt simple pour rechargement.
@@ -37,7 +37,7 @@ class OutageKind(str, Enum):
     VD = "VD"
 
 
-class AlertKind(str, Enum):
+class TypeAlerte(str, Enum):
     """Famille d'alerte produite par le moteur.
 
     - ``NEUTRONIC_ANOMALY`` : stock épuisé avant l'arrêt prévu.
@@ -52,7 +52,7 @@ class AlertKind(str, Enum):
     SPOT_BELOW_USAGE_VALUE = "SPOT_BELOW_USAGE_VALUE"
 
 
-class Severity(str, Enum):
+class Gravite(str, Enum):
     """Niveau de gravité d'une alerte."""
 
     INFO = "INFO"
@@ -72,360 +72,398 @@ def _ensure_finite(values: Sequence[float], field_name: str) -> None:
             raise ValueError(f"{field_name}[{index}] must be finite")
 
 
-class Plant(_DomainModel):
+class Tranche(_DomainModel):
     """Configuration statique d'une tranche nucléaire.
 
-    - ``id`` : identifiant interne de la tranche.
-    - ``eic_code`` : code EIC européen.
-    - ``nominal_power_mw`` : puissance électrique nominale en MW.
-    - ``initial_jepp`` : stock de combustible initial en JEPP.
+    - ``identifiant`` : identifiant interne de la tranche.
+    - ``code_eic`` : code EIC européen.
+    - ``puissance_nominale_mw`` : puissance électrique nominale en MW.
+    - ``jepp_initial`` : stock de combustible initial en JEPP.
     """
 
-    id: str = Field(min_length=1)
-    eic_code: str = Field(min_length=1)
-    nominal_power_mw: float = Field(gt=0.0)
-    initial_jepp: float = Field(ge=0.0)
+    identifiant: str = Field(min_length=1)
+    code_eic: str = Field(min_length=1)
+    puissance_nominale_mw: float = Field(gt=0.0)
+    jepp_initial: float = Field(ge=0.0)
 
 
-class Maintenance(_DomainModel):
+class Arret(_DomainModel):
     """Arrêt de maintenance planifié pour une tranche.
 
-    - ``kind`` : type d'arrêt (``ASR``, ``VP`` ou ``VD``).
-    - ``start_day`` : premier jour de l'arrêt, inclus.
-    - ``end_day`` : premier jour après l'arrêt, exclu.
+    - ``type_arret`` : type d'arrêt (``ASR``, ``VP`` ou ``VD``).
+    - ``jour_debut`` : premier jour de l'arrêt, inclus.
+    - ``jour_fin`` : premier jour après l'arrêt, exclu.
     """
 
-    kind: OutageKind
-    start_day: int = Field(ge=0)
-    end_day: int = Field(ge=1)
+    type_arret: TypeArret
+    jour_debut: int = Field(ge=0)
+    jour_fin: int = Field(ge=1)
 
     @model_validator(mode="after")
-    def _end_after_start(self) -> Self:
-        if self.end_day <= self.start_day:
-            raise ValueError("end_day must be greater than start_day")
+    def _fin_after_debut(self) -> Self:
+        if self.jour_fin <= self.jour_debut:
+            raise ValueError("jour_fin must be greater than jour_debut")
         return self
 
 
 class Modulation(_DomainModel):
     """Fenêtre de modulation manuelle imposée par l'utilisateur.
 
-    - ``start_day`` : premier jour de la modulation, inclus.
-    - ``end_day`` : premier jour après la modulation, exclu.
-    - ``factor`` : facteur de charge cible entre ``0.0`` et ``1.0``.
+    - ``jour_debut`` : premier jour de la modulation, inclus.
+    - ``jour_fin`` : premier jour après la modulation, exclu.
+    - ``facteur`` : facteur de charge cible entre ``0.0`` et ``1.0``.
     """
 
-    start_day: int = Field(ge=0)
-    end_day: int = Field(ge=1)
-    factor: float = Field(ge=0.0, le=1.0)
+    jour_debut: int = Field(ge=0)
+    jour_fin: int = Field(ge=1)
+    facteur: float = Field(ge=0.0, le=1.0)
 
     @model_validator(mode="after")
-    def _end_after_start(self) -> Self:
-        if self.end_day <= self.start_day:
-            raise ValueError("end_day must be greater than start_day")
+    def _fin_after_debut(self) -> Self:
+        if self.jour_fin <= self.jour_debut:
+            raise ValueError("jour_fin must be greater than jour_debut")
         return self
 
 
 def _validate_no_overlap(
-    windows: Sequence[Maintenance | Modulation],
+    windows: Sequence[Arret | Modulation],
     label: str,
 ) -> None:
-    ordered = sorted(windows, key=lambda window: window.start_day)
+    ordered = sorted(windows, key=lambda window: window.jour_debut)
     for previous, current in zip(ordered, ordered[1:]):
-        if current.start_day < previous.end_day:
+        if current.jour_debut < previous.jour_fin:
             raise ValueError(
                 f"overlapping {label} windows: "
-                f"[{previous.start_day}, {previous.end_day}) and "
-                f"[{current.start_day}, {current.end_day})"
+                f"[{previous.jour_debut}, {previous.jour_fin}) and "
+                f"[{current.jour_debut}, {current.jour_fin})"
             )
 
 
-class Simulation(_DomainModel):
-    """Tranche nucléaire avec ses arrêts et ses modulations.
+class SimulationTranche(_DomainModel):
+    """Entrée de simulation d'une tranche nucléaire.
 
-    - ``plant`` : configuration statique de la tranche.
-    - ``maintenances`` : arrêts planifiés de cette tranche.
+    - ``tranche`` : configuration statique de la tranche.
+    - ``arrets`` : arrêts planifiés de cette tranche.
     - ``modulations`` : modulations manuelles de cette tranche.
     """
 
-    plant: Plant
-    maintenances: list[Maintenance] = Field(default_factory=list)
+    tranche: Tranche
+    arrets: list[Arret] = Field(default_factory=list)
     modulations: list[Modulation] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _schedules_do_not_overlap(self) -> Self:
-        _validate_no_overlap(self.maintenances, "maintenance")
+        _validate_no_overlap(self.arrets, "arrêt")
         _validate_no_overlap(self.modulations, "modulation")
         return self
 
 
-class Scenario(_DomainModel):
+class Simulation(_DomainModel):
     """Entrée complète d'une simulation.
 
-    - ``scenario_id`` : identifiant du scénario.
-    - ``name`` : nom lisible du scénario.
-    - ``created_at`` : date de création en UTC.
-    - ``horizon_days`` : nombre de jours simulés.
-    - ``spot_prices`` : prix spot de longueur ``horizon_days``, en €/MWh.
-    - ``demand_mwh`` : demande nationale de longueur ``horizon_days``,
-      en MWh/jour.
-    - ``usage_values_eur_mwh`` : valeur d'usage en €/MWh, un scalaire
-      statique par tranche, indexé par identifiant de tranche. Ce n'est pas
-      une série journalière dans le MVP.
-    - ``plants`` : tranches du scénario, chacune avec ses arrêts et ses
-      modulations.
+    - ``simulation_id`` : identifiant de la simulation.
+    - ``nom`` : nom lisible de la simulation.
+    - ``cree_le`` : date de création en UTC.
+    - ``horizon_jours`` : nombre de jours simulés.
+    - ``prix_spot_eur_mwh`` : prix spot de longueur ``horizon_jours``,
+      en €/MWh.
+    - ``demande_nationale_mwh`` : demande nationale de longueur
+      ``horizon_jours``, en MWh/jour.
+    - ``valeur_usage_eur_mwh`` : valeur d'usage nationale de longueur
+      ``horizon_jours``, en €/MWh.
+    - ``tranches`` : tranches de la simulation, chacune avec ses arrêts et
+      ses modulations.
     """
 
-    scenario_id: UUID = Field(default_factory=uuid4)
-    name: str = Field(min_length=1, max_length=200)
-    created_at: datetime = Field(
+    simulation_id: UUID = Field(default_factory=uuid4)
+    nom: str = Field(min_length=1, max_length=200)
+    cree_le: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
-    horizon_days: int = Field(ge=1, le=MAX_HORIZON_DAYS)
-    spot_prices: list[float]
-    demand_mwh: list[float]
-    usage_values_eur_mwh: dict[str, float]
-    plants: list[Simulation]
+    horizon_jours: int = Field(ge=1, le=MAX_HORIZON_DAYS)
+    prix_spot_eur_mwh: list[float]
+    demande_nationale_mwh: list[float]
+    valeur_usage_eur_mwh: list[float]
+    tranches: list[SimulationTranche]
 
     @model_validator(mode="after")
-    def _consistent_scenario(self) -> Self:
-        if not self.plants:
-            raise ValueError("scenario must contain at least one plant")
+    def _consistent_simulation(self) -> Self:
+        tranche_ids = [entry.tranche.identifiant for entry in self.tranches]
+        if len(tranche_ids) != len(set(tranche_ids)):
+            raise ValueError("tranche identifiers must be unique")
 
-        plant_ids = [entry.plant.id for entry in self.plants]
-        if len(plant_ids) != len(set(plant_ids)):
-            raise ValueError("plant ids must be unique")
+        for field_name in (
+            "prix_spot_eur_mwh",
+            "demande_nationale_mwh",
+            "valeur_usage_eur_mwh",
+        ):
+            values = getattr(self, field_name)
+            if len(values) != self.horizon_jours:
+                raise ValueError(
+                    f"{field_name} length must equal horizon_jours: "
+                    f"{len(values)} != {self.horizon_jours}"
+                )
+            _ensure_finite(values, field_name)
 
-        if set(self.usage_values_eur_mwh) != set(plant_ids):
-            raise ValueError(
-                "usage_values_eur_mwh keys must exactly match plant ids"
-            )
+        if any(value < 0.0 for value in self.demande_nationale_mwh):
+            raise ValueError("demande_nationale_mwh must be non-negative")
 
-        if len(self.spot_prices) != self.horizon_days:
-            raise ValueError(
-                "spot_prices length must equal horizon_days: "
-                f"{len(self.spot_prices)} != {self.horizon_days}"
-            )
-        if len(self.demand_mwh) != self.horizon_days:
-            raise ValueError(
-                "demand_mwh length must equal horizon_days: "
-                f"{len(self.demand_mwh)} != {self.horizon_days}"
-            )
-
-        _ensure_finite(self.spot_prices, "spot_prices")
-        _ensure_finite(self.demand_mwh, "demand_mwh")
-        _ensure_finite(
-            list(self.usage_values_eur_mwh.values()),
-            "usage_values_eur_mwh",
-        )
-
-        if any(value < 0.0 for value in self.demand_mwh):
-            raise ValueError("demand_mwh must be non-negative")
-
-        for entry in self.plants:
-            for maintenance in entry.maintenances:
-                if maintenance.end_day > self.horizon_days:
+        for entry in self.tranches:
+            for arret in entry.arrets:
+                if arret.jour_fin > self.horizon_jours:
                     raise ValueError(
-                        "maintenance window must be inside the horizon: "
-                        f"[{maintenance.start_day}, {maintenance.end_day}) "
-                        f"> {self.horizon_days}"
+                        "arrêt window must be inside the horizon: "
+                        f"[{arret.jour_debut}, {arret.jour_fin}) "
+                        f"> {self.horizon_jours}"
                     )
             for modulation in entry.modulations:
-                if modulation.end_day > self.horizon_days:
+                if modulation.jour_fin > self.horizon_jours:
                     raise ValueError(
                         "modulation window must be inside the horizon: "
-                        f"[{modulation.start_day}, {modulation.end_day}) "
-                        f"> {self.horizon_days}"
+                        f"[{modulation.jour_debut}, {modulation.jour_fin}) "
+                        f"> {self.horizon_jours}"
                     )
 
         return self
 
     @property
-    def maintenances_by_plant(
-        self,
-    ) -> dict[str, tuple[Maintenance, ...]]:
+    def arrets_par_tranche(self) -> dict[str, tuple[Arret, ...]]:
         """Renvoie les arrêts de chaque tranche, indexés par identifiant."""
         return {
-            entry.plant.id: tuple(entry.maintenances) for entry in self.plants
+            entry.tranche.identifiant: tuple(entry.arrets)
+            for entry in self.tranches
         }
 
     @property
-    def modulations_by_plant(
+    def modulations_par_tranche(
         self,
     ) -> dict[str, tuple[Modulation, ...]]:
         """Renvoie les modulations de chaque tranche, par identifiant."""
         return {
-            entry.plant.id: tuple(entry.modulations) for entry in self.plants
+            entry.tranche.identifiant: tuple(entry.modulations)
+            for entry in self.tranches
         }
 
 
-class PlantResult(_DomainModel):
-    """Trajectoire calculée pour une tranche.
+class SimulationResume(_DomainModel):
+    """Résumé d'une simulation persistée.
 
-    - ``plant_id`` : identifiant de la tranche.
-    - ``production_factors`` : facteurs de charge physiquement contraints,
-      de longueur ``horizon_days``, entre ``0.0`` et ``1.0``. Ce ne sont pas
-      les facteurs demandés : la limite physique du stock peut les réduire.
-    - ``energy_mwh`` : énergie journalière de longueur ``horizon_days``,
-      en MWh/jour.
-    - ``remaining_jepp`` : stock en fin de journée, de longueur
-      ``horizon_days``, en JEPP, borné à ``0``. Les rechargements sont
-      reflétés aux points de recharge.
-    - ``depletion_days`` : premier jour limité par le stock de chaque cycle
-      concerné, par ordre croissant.
+    - ``simulation_id`` : identifiant de la simulation.
+    - ``nom`` : nom lisible.
+    - ``cree_le`` : date de création.
+    - ``horizon_jours`` : nombre de jours simulés.
+    - ``nombre_tranches`` : nombre de tranches.
     """
 
-    plant_id: str = Field(min_length=1)
-    production_factors: list[float]
-    energy_mwh: list[float]
-    remaining_jepp: list[float]
-    depletion_days: list[int]
+    simulation_id: UUID
+    nom: str
+    cree_le: datetime
+    horizon_jours: int
+    nombre_tranches: int
 
-    @field_validator("production_factors")
+
+class SimulationCreation(_DomainModel):
+    """Charge utile de création d'une simulation."""
+
+    nom: str = Field(min_length=1, max_length=200)
+    horizon_jours: int = Field(ge=1, le=MAX_HORIZON_DAYS)
+    prix_spot_eur_mwh: list[float]
+    demande_nationale_mwh: list[float]
+    valeur_usage_eur_mwh: list[float]
+    tranches: list[SimulationTranche]
+
+
+class ParametresSimulation(_DomainModel):
+    """Charge utile de mise à jour des paramètres d'une simulation."""
+
+    nom: str = Field(min_length=1, max_length=200)
+    horizon_jours: int = Field(ge=1, le=MAX_HORIZON_DAYS)
+    prix_spot_eur_mwh: list[float]
+    demande_nationale_mwh: list[float]
+    valeur_usage_eur_mwh: list[float]
+
+
+class ConfigurationTranche(_DomainModel):
+    """Charge utile de mise à jour de la configuration d'une tranche."""
+
+    code_eic: str = Field(min_length=1)
+    puissance_nominale_mw: float = Field(gt=0.0)
+    jepp_initial: float = Field(ge=0.0)
+
+
+class ResultatTranche(_DomainModel):
+    """Trajectoire calculée pour une tranche.
+
+    - ``tranche_id`` : identifiant de la tranche.
+    - ``facteurs_production`` : facteurs de charge physiquement contraints,
+      de longueur ``horizon_jours``, entre ``0.0`` et ``1.0``.
+    - ``energie_mwh`` : énergie journalière de longueur ``horizon_jours``,
+      en MWh/jour.
+    - ``jepp_restant`` : stock en fin de journée, de longueur
+      ``horizon_jours``, en JEPP, borné à ``0``.
+    - ``jours_epuisement`` : premier jour limité par le stock de chaque
+      cycle concerné, par ordre croissant.
+    """
+
+    tranche_id: str = Field(min_length=1)
+    facteurs_production: list[float]
+    energie_mwh: list[float]
+    jepp_restant: list[float]
+    jours_epuisement: list[int]
+
+    @field_validator("facteurs_production")
     @classmethod
     def _valid_production_factors(cls, values: list[float]) -> list[float]:
-        _ensure_finite(values, "production_factors")
+        _ensure_finite(values, "facteurs_production")
         if any(value < 0.0 or value > 1.0 for value in values):
-            raise ValueError("production_factors must be between 0.0 and 1.0")
+            raise ValueError(
+                "facteurs_production must be between 0.0 and 1.0"
+            )
         return values
 
-    @field_validator("energy_mwh", "remaining_jepp")
+    @field_validator("energie_mwh", "jepp_restant")
     @classmethod
     def _finite_non_negative(cls, values: list[float]) -> list[float]:
-        _ensure_finite(values, "energy_mwh/remaining_jepp")
+        _ensure_finite(values, "energie_mwh/jepp_restant")
         if any(value < 0.0 for value in values):
-            raise ValueError("energy_mwh and remaining_jepp must be non-negative")
+            raise ValueError(
+                "energie_mwh and jepp_restant must be non-negative"
+            )
         return values
 
-    @field_validator("depletion_days")
+    @field_validator("jours_epuisement")
     @classmethod
     def _ascending_depletion_days(cls, values: list[int]) -> list[int]:
         if values != sorted(values):
-            raise ValueError("depletion_days must be ascending")
+            raise ValueError("jours_epuisement must be ascending")
         return values
 
     @model_validator(mode="after")
     def _arrays_share_horizon(self) -> Self:
         lengths = {
-            len(self.production_factors),
-            len(self.energy_mwh),
-            len(self.remaining_jepp),
+            len(self.facteurs_production),
+            len(self.energie_mwh),
+            len(self.jepp_restant),
         }
         if len(lengths) != 1:
             raise ValueError("result arrays must share the same length")
         return self
 
 
-class Alert(_DomainModel):
+class Alerte(_DomainModel):
     """Alerte réglementaire ou physique.
 
-    - ``kind`` : famille d'alerte.
-    - ``day`` : jour concerné, ou ``None`` pour une alerte sur un arrêt.
-    - ``plant_id`` : tranche concernée, ou ``None`` pour une alerte nationale.
+    - ``type_alerte`` : famille d'alerte.
+    - ``jour`` : jour concerné, ou ``None`` pour une alerte sans jour.
+    - ``tranche_id`` : tranche concernée, ou ``None`` pour une alerte
+      nationale.
     - ``message`` : texte destiné à l'interface, en français.
-    - ``severity`` : niveau de gravité.
+    - ``gravite`` : niveau de gravité.
     """
 
-    kind: AlertKind
-    day: int | None
-    plant_id: str | None
+    type_alerte: TypeAlerte
+    jour: int | None
+    tranche_id: str | None
     message: str
-    severity: Severity
+    gravite: Gravite
 
 
-class SimulationResult(_DomainModel):
+class ResultatSimulation(_DomainModel):
     """Sortie complète d'une simulation.
 
-    - ``scenario_id`` : identifiant du scénario exécuté.
-    - ``execution_time_ms`` : durée d'exécution du moteur, en millisecondes.
-    - ``plants`` : une trajectoire par tranche.
-    - ``national_supply_mwh`` : offre nationale agrégée de longueur
-      ``horizon_days``, en MWh/jour.
-    - ``demand_mwh`` : demande nationale de longueur ``horizon_days``,
+    - ``simulation_id`` : identifiant de la simulation exécutée.
+    - ``duree_execution_ms`` : durée d'exécution du moteur, en millisecondes.
+    - ``tranches`` : une trajectoire par tranche.
+    - ``offre_nationale_mwh`` : offre nationale agrégée de longueur
+      ``horizon_jours``, en MWh/jour.
+    - ``demande_mwh`` : demande nationale de longueur ``horizon_jours``,
       en MWh/jour.
-    - ``deficit_days`` : indices des jours en déficit.
-    - ``alerts`` : alertes produites par le moteur, dans un ordre
+    - ``jours_deficit`` : indices des jours en déficit.
+    - ``alertes`` : alertes produites par le moteur, dans un ordre
       déterministe : neutroniques, REMIT, déficits, puis prix spot sous la
       valeur d'usage.
     """
 
-    scenario_id: UUID
-    execution_time_ms: float = Field(ge=0.0)
-    plants: list[PlantResult]
-    national_supply_mwh: list[float]
-    demand_mwh: list[float]
-    deficit_days: list[int]
-    alerts: list[Alert]
+    simulation_id: UUID
+    duree_execution_ms: float = Field(ge=0.0)
+    tranches: list[ResultatTranche]
+    offre_nationale_mwh: list[float]
+    demande_mwh: list[float]
+    jours_deficit: list[int]
+    alertes: list[Alerte]
 
-    @field_validator("national_supply_mwh", "demand_mwh")
+    @field_validator("offre_nationale_mwh", "demande_mwh")
     @classmethod
     def _finite_supply_and_demand(cls, values: list[float]) -> list[float]:
-        _ensure_finite(values, "national_supply_mwh/demand_mwh")
+        _ensure_finite(values, "offre_nationale_mwh/demande_mwh")
         return values
 
     @model_validator(mode="after")
     def _consistent_result(self) -> Self:
-        horizon = len(self.demand_mwh)
-        if len(self.national_supply_mwh) != horizon:
+        horizon = len(self.demande_mwh)
+        if len(self.offre_nationale_mwh) != horizon:
             raise ValueError(
-                "national_supply_mwh length must equal demand_mwh length"
+                "offre_nationale_mwh length must equal demande_mwh length"
             )
 
-        plant_ids = [result.plant_id for result in self.plants]
-        if len(plant_ids) != len(set(plant_ids)):
-            raise ValueError("plant ids must be unique")
+        tranche_ids = [resultat.tranche_id for resultat in self.tranches]
+        if len(tranche_ids) != len(set(tranche_ids)):
+            raise ValueError("tranche identifiers must be unique")
 
-        for result in self.plants:
-            if len(result.production_factors) != horizon:
+        for resultat in self.tranches:
+            if len(resultat.facteurs_production) != horizon:
                 raise ValueError(
-                    f"production_factors length must equal horizon for "
-                    f"{result.plant_id!r}"
+                    f"facteurs_production length must equal horizon for "
+                    f"{resultat.tranche_id!r}"
                 )
-            if len(result.energy_mwh) != horizon:
+            if len(resultat.energie_mwh) != horizon:
                 raise ValueError(
-                    f"energy_mwh length must equal horizon for "
-                    f"{result.plant_id!r}"
+                    f"energie_mwh length must equal horizon for "
+                    f"{resultat.tranche_id!r}"
                 )
-            if len(result.remaining_jepp) != horizon:
+            if len(resultat.jepp_restant) != horizon:
                 raise ValueError(
-                    f"remaining_jepp length must equal horizon for "
-                    f"{result.plant_id!r}"
+                    f"jepp_restant length must equal horizon for "
+                    f"{resultat.tranche_id!r}"
                 )
-            for day in result.depletion_days:
+            for day in resultat.jours_epuisement:
                 if day < 0 or day >= horizon:
                     raise ValueError(
                         f"depletion day {day} outside horizon {horizon}"
                     )
 
-        for day in self.deficit_days:
+        for day in self.jours_deficit:
             if day < 0 or day >= horizon:
                 raise ValueError(
                     f"deficit day {day} outside horizon {horizon}"
                 )
 
-        for alert in self.alerts:
-            if alert.day is not None and (
-                alert.day < 0 or alert.day >= horizon
+        for alerte in self.alertes:
+            if alerte.jour is not None and (
+                alerte.jour < 0 or alerte.jour >= horizon
             ):
                 raise ValueError(
-                    f"alert day {alert.day} outside horizon {horizon}"
+                    f"alert day {alerte.jour} outside horizon {horizon}"
                 )
 
         return self
 
     @property
-    def alerts_by_plant(self) -> dict[str, tuple[Alert, ...]]:
-        """Renvoie les alertes de chaque tranche, indexées par identifiant."""
-        grouped: dict[str, list[Alert]] = {
-            result.plant_id: [] for result in self.plants
+    def alertes_par_tranche(self) -> dict[str, tuple[Alerte, ...]]:
+        """Renvoie les alertes de chaque tranche, par identifiant."""
+        grouped: dict[str, list[Alerte]] = {
+            resultat.tranche_id: [] for resultat in self.tranches
         }
-        for alert in self.alerts:
-            if alert.plant_id is not None:
-                grouped.setdefault(alert.plant_id, []).append(alert)
-        return {plant_id: tuple(items) for plant_id, items in grouped.items()}
+        for alerte in self.alertes:
+            if alerte.tranche_id is not None:
+                grouped.setdefault(alerte.tranche_id, []).append(alerte)
+        return {
+            tranche_id: tuple(items) for tranche_id, items in grouped.items()
+        }
 
     @property
-    def national_alerts(self) -> tuple[Alert, ...]:
+    def alertes_nationales(self) -> tuple[Alerte, ...]:
         """Renvoie les alertes qui ne visent aucune tranche."""
         return tuple(
-            alert for alert in self.alerts if alert.plant_id is None
+            alerte for alerte in self.alertes if alerte.tranche_id is None
         )

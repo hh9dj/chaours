@@ -37,6 +37,7 @@
               uv
               sqlite
               ruff
+              pyright
               just
             ];
           };

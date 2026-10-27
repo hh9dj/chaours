@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from chaours.api.context import AppContext
 from chaours.api.main import create_app
 
 
@@ -19,60 +21,88 @@ def client() -> Generator[TestClient, None, None]:
 
 def _payload() -> dict[str, Any]:
     return {
-        "name": "api-scenario",
-        "horizon_days": 5,
-        "spot_prices": [10.0, 80.0, 90.0, 100.0, 110.0],
-        "demand_mwh": [0.0, 0.0, 0.0, 0.0, 0.0],
-        "usage_values_eur_mwh": {"P1": 60.0, "P2": 70.0},
-        "plants": [
+        "nom": "api-simulation",
+        "horizon_jours": 5,
+        "prix_spot_eur_mwh": [10.0, 80.0, 90.0, 100.0, 110.0],
+        "demande_nationale_mwh": [0.0, 0.0, 0.0, 0.0, 0.0],
+        "valeur_usage_eur_mwh": [60.0, 60.0, 60.0, 60.0, 60.0],
+        "tranches": [
             {
-                "plant": {
-                    "id": "P1",
-                    "eic_code": "EIC-P1",
-                    "nominal_power_mw": 900.0,
-                    "initial_jepp": 300.0,
+                "tranche": {
+                    "identifiant": "P1",
+                    "code_eic": "EIC-P1",
+                    "puissance_nominale_mw": 900.0,
+                    "jepp_initial": 300.0,
                 },
-                "maintenances": [
-                    {"kind": "ASR", "start_day": 1, "end_day": 2}
+                "arrets": [
+                    {"type_arret": "ASR", "jour_debut": 1, "jour_fin": 2}
                 ],
                 "modulations": [],
             },
             {
-                "plant": {
-                    "id": "P2",
-                    "eic_code": "EIC-P2",
-                    "nominal_power_mw": 1_300.0,
-                    "initial_jepp": 280.0,
+                "tranche": {
+                    "identifiant": "P2",
+                    "code_eic": "EIC-P2",
+                    "puissance_nominale_mw": 1_300.0,
+                    "jepp_initial": 280.0,
                 },
-                "maintenances": [],
-                "modulations": [{"start_day": 2, "end_day": 4, "factor": 0.5}],
+                "arrets": [],
+                "modulations": [
+                    {"jour_debut": 2, "jour_fin": 4, "facteur": 0.5}
+                ],
             },
         ],
     }
 
 
-def test_create_and_get_simulation(client: TestClient):
+def _settings_payload() -> dict[str, Any]:
+    return {
+        "nom": "api-simulation-updated",
+        "horizon_jours": 5,
+        "prix_spot_eur_mwh": [11.0, 81.0, 91.0, 101.0, 111.0],
+        "demande_nationale_mwh": [1.0, 1.0, 1.0, 1.0, 1.0],
+        "valeur_usage_eur_mwh": [61.0, 61.0, 61.0, 61.0, 61.0],
+    }
+
+
+def _create(client: TestClient) -> dict[str, Any]:
     response = client.post("/simulations/", json=_payload())
-
     assert response.status_code == 201
-    created = response.json()
-    assert created["name"] == "api-scenario"
-    assert created["scenario_id"]
-    assert created["created_at"]
+    return response.json()
 
-    fetched = client.get(f"/simulations/{created['scenario_id']}")
+
+def test_list_simulations(client: TestClient):
+    assert client.get("/simulations/").json() == []
+
+    created = _create(client)
+    response = client.get("/simulations/")
+
+    assert response.status_code == 200
+    summaries = response.json()
+    assert len(summaries) == 1
+    assert summaries[0]["simulation_id"] == created["simulation_id"]
+    assert summaries[0]["nom"] == "api-simulation"
+    assert summaries[0]["nombre_tranches"] == 2
+
+
+def test_create_and_get_simulation(client: TestClient):
+    created = _create(client)
+
+    assert created["nom"] == "api-simulation"
+    assert created["simulation_id"]
+    assert created["cree_le"]
+
+    fetched = client.get(f"/simulations/{created['simulation_id']}")
     assert fetched.status_code == 200
     assert fetched.json() == created
 
 
 def test_create_generates_server_side_identifier(client: TestClient):
-    supplied_id = str(uuid4())
-    payload = {**_payload(), "scenario_id": supplied_id}
+    payload = {**_payload(), "simulation_id": str(uuid4())}
 
     response = client.post("/simulations/", json=payload)
 
-    assert response.status_code == 201
-    assert response.json()["scenario_id"] != supplied_id
+    assert response.status_code == 422
 
 
 def test_get_unknown_simulation_returns_404(client: TestClient):
@@ -81,90 +111,231 @@ def test_get_unknown_simulation_returns_404(client: TestClient):
     assert response.status_code == 404
 
 
-def test_create_rejects_invalid_scenario(client: TestClient):
+def test_create_rejects_invalid_simulation(client: TestClient):
     payload = _payload()
-    payload["plants"][1]["plant"]["id"] = "P1"
+    payload["tranches"][1]["tranche"]["identifiant"] = "P1"
 
     response = client.post("/simulations/", json=payload)
 
     assert response.status_code == 422
 
 
-def test_update_maintenances(client: TestClient):
-    scenario_id = client.post("/simulations/", json=_payload()).json()[
-        "scenario_id"
-    ]
+def test_create_rejects_series_length_mismatch(client: TestClient):
+    payload = _payload()
+    payload["valeur_usage_eur_mwh"] = [60.0, 60.0]
+
+    response = client.post("/simulations/", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_update_simulation_settings(client: TestClient):
+    simulation_id = _create(client)["simulation_id"]
 
     response = client.put(
-        f"/simulations/{scenario_id}/plants/P1/maintenances",
-        json=[{"kind": "VP", "start_day": 2, "end_day": 4}],
+        f"/simulations/{simulation_id}",
+        json=_settings_payload(),
     )
 
     assert response.status_code == 200
-    plants = response.json()["plants"]
-    assert plants[0]["maintenances"] == [
-        {"kind": "VP", "start_day": 2, "end_day": 4}
+    updated = response.json()
+    assert updated["nom"] == "api-simulation-updated"
+    assert updated["prix_spot_eur_mwh"] == [11.0, 81.0, 91.0, 101.0, 111.0]
+    assert updated["valeur_usage_eur_mwh"] == [61.0] * 5
+    assert len(updated["tranches"]) == 2
+
+
+def test_update_simulation_settings_rejects_bad_horizon(
+    client: TestClient,
+):
+    simulation_id = _create(client)["simulation_id"]
+    payload = _settings_payload()
+    payload["horizon_jours"] = 6
+
+    response = client.put(
+        f"/simulations/{simulation_id}",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_simulation_settings_rejects_schedule_outside_horizon(
+    client: TestClient,
+):
+    translation = _payload()
+    translation["horizon_jours"] = 10
+    translation["prix_spot_eur_mwh"] = [10.0] * 10
+    translation["demande_nationale_mwh"] = [0.0] * 10
+    translation["valeur_usage_eur_mwh"] = [60.0] * 10
+    translation["tranches"][1]["arrets"] = [
+        {"type_arret": "VD", "jour_debut": 7, "jour_fin": 9}
     ]
-    fetched = client.get(f"/simulations/{scenario_id}").json()
-    assert fetched["plants"][0]["maintenances"] == [
-        {"kind": "VP", "start_day": 2, "end_day": 4}
+    simulation_id = client.post(
+        "/simulations/",
+        json=translation,
+    ).json()["simulation_id"]
+    payload = _settings_payload()
+
+    response = client.put(
+        f"/simulations/{simulation_id}",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_unknown_simulation_returns_404(client: TestClient):
+    response = client.put(
+        f"/simulations/{uuid4()}",
+        json=_settings_payload(),
+    )
+
+    assert response.status_code == 404
+
+
+def test_update_tranche_configuration(client: TestClient):
+    simulation_id = _create(client)["simulation_id"]
+
+    response = client.put(
+        f"/simulations/{simulation_id}/plants/P1",
+        json={
+            "code_eic": "EIC-P1-NEW",
+            "puissance_nominale_mw": 1_100.0,
+            "jepp_initial": 250.0,
+        },
+    )
+
+    assert response.status_code == 200
+    tranche = response.json()["tranches"][0]["tranche"]
+    assert tranche == {
+        "identifiant": "P1",
+        "code_eic": "EIC-P1-NEW",
+        "puissance_nominale_mw": 1_100.0,
+        "jepp_initial": 250.0,
+    }
+
+
+def test_update_tranche_rejects_invalid_configuration(
+    client: TestClient,
+):
+    simulation_id = _create(client)["simulation_id"]
+
+    response = client.put(
+        f"/simulations/{simulation_id}/plants/P1",
+        json={
+            "code_eic": "",
+            "puissance_nominale_mw": 0.0,
+            "jepp_initial": -1.0,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_unknown_tranche_returns_404(client: TestClient):
+    simulation_id = _create(client)["simulation_id"]
+
+    response = client.put(
+        f"/simulations/{simulation_id}/plants/UNKNOWN",
+        json={
+            "code_eic": "EIC-X",
+            "puissance_nominale_mw": 900.0,
+            "jepp_initial": 300.0,
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_update_arrets(client: TestClient):
+    simulation_id = _create(client)["simulation_id"]
+
+    response = client.put(
+        f"/simulations/{simulation_id}/plants/P1/maintenances",
+        json=[{"type_arret": "VP", "jour_debut": 2, "jour_fin": 4}],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["tranches"][0]["arrets"] == [
+        {"type_arret": "VP", "jour_debut": 2, "jour_fin": 4}
+    ]
+    fetched = client.get(f"/simulations/{simulation_id}").json()
+    assert fetched["tranches"][0]["arrets"] == [
+        {"type_arret": "VP", "jour_debut": 2, "jour_fin": 4}
     ]
 
 
 def test_update_modulations(client: TestClient):
-    scenario_id = client.post("/simulations/", json=_payload()).json()[
-        "scenario_id"
-    ]
+    simulation_id = _create(client)["simulation_id"]
 
     response = client.put(
-        f"/simulations/{scenario_id}/plants/P2/modulations",
+        f"/simulations/{simulation_id}/plants/P2/modulations",
         json=[
-            {"start_day": 1, "end_day": 3, "factor": 0.25},
-            {"start_day": 3, "end_day": 5, "factor": 0.75},
+            {"jour_debut": 1, "jour_fin": 3, "facteur": 0.25},
+            {"jour_debut": 3, "jour_fin": 5, "facteur": 0.75},
         ],
     )
 
     assert response.status_code == 200
-    assert response.json()["plants"][1]["modulations"] == [
-        {"start_day": 1, "end_day": 3, "factor": 0.25},
-        {"start_day": 3, "end_day": 5, "factor": 0.75},
+    assert response.json()["tranches"][1]["modulations"] == [
+        {"jour_debut": 1, "jour_fin": 3, "facteur": 0.25},
+        {"jour_debut": 3, "jour_fin": 5, "facteur": 0.75},
     ]
 
 
-def test_update_maintenances_rejects_overlap_with_422(client: TestClient):
-    scenario_id = client.post("/simulations/", json=_payload()).json()[
-        "scenario_id"
-    ]
+def test_update_arrets_rejects_overlap_with_422(client: TestClient):
+    simulation_id = _create(client)["simulation_id"]
 
     response = client.put(
-        f"/simulations/{scenario_id}/plants/P1/maintenances",
+        f"/simulations/{simulation_id}/plants/P1/maintenances",
         json=[
-            {"kind": "ASR", "start_day": 1, "end_day": 4},
-            {"kind": "VP", "start_day": 3, "end_day": 5},
+            {"type_arret": "ASR", "jour_debut": 1, "jour_fin": 4},
+            {"type_arret": "VP", "jour_debut": 3, "jour_fin": 5},
         ],
     )
 
     assert response.status_code == 422
-    fetched = client.get(f"/simulations/{scenario_id}").json()
-    assert fetched["plants"][0]["maintenances"] == [
-        {"kind": "ASR", "start_day": 1, "end_day": 2}
+    fetched = client.get(f"/simulations/{simulation_id}").json()
+    assert fetched["tranches"][0]["arrets"] == [
+        {"type_arret": "ASR", "jour_debut": 1, "jour_fin": 2}
     ]
 
 
-def test_update_schedule_outside_horizon_returns_422(client: TestClient):
-    scenario_id = client.post("/simulations/", json=_payload()).json()[
-        "scenario_id"
-    ]
+def test_update_arrets_outside_horizon_returns_422(client: TestClient):
+    simulation_id = _create(client)["simulation_id"]
 
     response = client.put(
-        f"/simulations/{scenario_id}/plants/P1/maintenances",
-        json=[{"kind": "ASR", "start_day": 1, "end_day": 6}],
+        f"/simulations/{simulation_id}/plants/P1/maintenances",
+        json=[{"type_arret": "ASR", "jour_debut": 1, "jour_fin": 6}],
     )
 
     assert response.status_code == 422
 
 
-def test_update_unknown_scenario_returns_404(client: TestClient):
+def test_update_modulations_rejects_overlap_with_422(
+    client: TestClient,
+):
+    simulation_id = _create(client)["simulation_id"]
+
+    response = client.put(
+        f"/simulations/{simulation_id}/plants/P2/modulations",
+        json=[
+            {"jour_debut": 1, "jour_fin": 4, "facteur": 0.25},
+            {"jour_debut": 3, "jour_fin": 5, "facteur": 0.75},
+        ],
+    )
+
+    assert response.status_code == 422
+    fetched = client.get(f"/simulations/{simulation_id}").json()
+    assert fetched["tranches"][1]["modulations"] == [
+        {"jour_debut": 2, "jour_fin": 4, "facteur": 0.5}
+    ]
+
+
+def test_update_unknown_simulation_schedule_returns_404(
+    client: TestClient,
+):
     response = client.put(
         f"/simulations/{uuid4()}/plants/P1/maintenances",
         json=[],
@@ -173,13 +344,13 @@ def test_update_unknown_scenario_returns_404(client: TestClient):
     assert response.status_code == 404
 
 
-def test_update_unknown_plant_returns_404(client: TestClient):
-    scenario_id = client.post("/simulations/", json=_payload()).json()[
-        "scenario_id"
-    ]
+def test_update_unknown_plant_schedule_returns_404(
+    client: TestClient,
+):
+    simulation_id = _create(client)["simulation_id"]
 
     response = client.put(
-        f"/simulations/{scenario_id}/plants/UNKNOWN/maintenances",
+        f"/simulations/{simulation_id}/plants/UNKNOWN/maintenances",
         json=[],
     )
 
@@ -187,20 +358,25 @@ def test_update_unknown_plant_returns_404(client: TestClient):
 
 
 def test_run_simulation(client: TestClient):
-    scenario_id = client.post("/simulations/", json=_payload()).json()[
-        "scenario_id"
-    ]
+    simulation_id = _create(client)["simulation_id"]
 
-    response = client.post(f"/simulations/{scenario_id}/run")
+    response = client.post(f"/simulations/{simulation_id}/run")
 
     assert response.status_code == 200
     result = response.json()
-    assert result["scenario_id"] == scenario_id
-    assert len(result["plants"]) == 2
-    assert len(result["national_supply_mwh"]) == 5
-    assert len(result["demand_mwh"]) == 5
-    assert result["plants"][0]["production_factors"][1] == 0.0
-    assert result["execution_time_ms"] >= 0.0
+    assert result["simulation_id"] == simulation_id
+    assert len(result["tranches"]) == 2
+    assert len(result["offre_nationale_mwh"]) == 5
+    assert len(result["demande_mwh"]) == 5
+    assert result["tranches"][0]["facteurs_production"][1] == 0.0
+    assert result["duree_execution_ms"] >= 0.0
+    spot_alerts = [
+        alerte
+        for alerte in result["alertes"]
+        if alerte["type_alerte"] == "SPOT_BELOW_USAGE_VALUE"
+    ]
+    assert [alerte["jour"] for alerte in spot_alerts] == [0]
+    assert all(alerte["tranche_id"] is None for alerte in spot_alerts)
 
 
 def test_run_unknown_simulation_returns_404(client: TestClient):
@@ -210,32 +386,131 @@ def test_run_unknown_simulation_returns_404(client: TestClient):
 
 
 def test_delete_simulation(client: TestClient):
-    scenario_id = client.post("/simulations/", json=_payload()).json()[
-        "scenario_id"
-    ]
+    simulation_id = _create(client)["simulation_id"]
 
-    response = client.delete(f"/simulations/{scenario_id}")
+    response = client.delete(f"/simulations/{simulation_id}")
 
     assert response.status_code == 204
-    assert client.get(f"/simulations/{scenario_id}").status_code == 404
-    assert client.delete(f"/simulations/{scenario_id}").status_code == 404
+    assert client.get(f"/simulations/{simulation_id}").status_code == 404
+    assert client.delete(f"/simulations/{simulation_id}").status_code == 404
 
 
-def test_update_modulations_rejects_overlap_with_422(client: TestClient):
-    scenario_id = client.post("/simulations/", json=_payload()).json()[
-        "scenario_id"
-    ]
+def test_lifespan_exposes_typed_app_context(client: TestClient):
+    application = cast(FastAPI, client.app)
+    context = application.state.context
 
-    response = client.put(
-        f"/simulations/{scenario_id}/plants/P2/modulations",
-        json=[
-            {"start_day": 1, "end_day": 4, "factor": 0.25},
-            {"start_day": 3, "end_day": 5, "factor": 0.75},
+    assert isinstance(context, AppContext)
+    assert context.session_factory is not None
+
+
+def test_create_simulation_without_tranches(client: TestClient):
+    payload = _payload()
+    payload["tranches"] = []
+
+    response = client.post("/simulations/", json=payload)
+
+    assert response.status_code == 201
+    created = response.json()
+    assert created["tranches"] == []
+    assert client.get(
+        f"/simulations/{created['simulation_id']}"
+    ).json()["tranches"] == []
+
+    summaries = client.get("/simulations/").json()
+    assert summaries[0]["nombre_tranches"] == 0
+
+    result = client.post(
+        f"/simulations/{created['simulation_id']}/run"
+    ).json()
+    assert result["tranches"] == []
+    assert result["offre_nationale_mwh"] == [0.0] * 5
+
+
+def _tranche_payload(
+    identifiant: str = "P3",
+    jour_debut: int = 0,
+    jour_fin: int = 2,
+) -> dict[str, Any]:
+    return {
+        "tranche": {
+            "identifiant": identifiant,
+            "code_eic": f"EIC-{identifiant}",
+            "puissance_nominale_mw": 900.0,
+            "jepp_initial": 300.0,
+        },
+        "arrets": [
+            {
+                "type_arret": "ASR",
+                "jour_debut": jour_debut,
+                "jour_fin": jour_fin,
+            }
         ],
+        "modulations": [],
+    }
+
+
+def test_add_tranche_to_empty_simulation(client: TestClient):
+    payload = _payload()
+    payload["tranches"] = []
+    simulation_id = client.post(
+        "/simulations/",
+        json=payload,
+    ).json()["simulation_id"]
+
+    response = client.post(
+        f"/simulations/{simulation_id}/plants",
+        json=_tranche_payload(),
+    )
+
+    assert response.status_code == 201
+    added = response.json()["tranches"]
+    assert len(added) == 1
+    assert added[0]["tranche"]["identifiant"] == "P3"
+    fetched = client.get(f"/simulations/{simulation_id}").json()
+    assert fetched["tranches"][0]["tranche"]["identifiant"] == "P3"
+    result = client.post(
+        f"/simulations/{simulation_id}/run"
+    ).json()
+    assert len(result["tranches"]) == 1
+
+
+def test_add_tranche_rejects_duplicate_with_422(client: TestClient):
+    simulation_id = _create(client)["simulation_id"]
+
+    response = client.post(
+        f"/simulations/{simulation_id}/plants",
+        json=_tranche_payload(identifiant="P1"),
     )
 
     assert response.status_code == 422
-    fetched = client.get(f"/simulations/{scenario_id}").json()
-    assert fetched["plants"][1]["modulations"] == [
-        {"start_day": 2, "end_day": 4, "factor": 0.5}
-    ]
+    fetched = client.get(f"/simulations/{simulation_id}").json()
+    assert [
+        entry["tranche"]["identifiant"] for entry in fetched["tranches"]
+    ] == ["P1", "P2"]
+
+
+def test_add_tranche_outside_horizon_returns_422(client: TestClient):
+    payload = _payload()
+    payload["tranches"] = []
+    simulation_id = client.post(
+        "/simulations/",
+        json=payload,
+    ).json()["simulation_id"]
+
+    response = client.post(
+        f"/simulations/{simulation_id}/plants",
+        json=_tranche_payload(jour_debut=1, jour_fin=6),
+    )
+
+    assert response.status_code == 422
+
+
+def test_add_tranche_unknown_simulation_returns_404(
+    client: TestClient,
+):
+    response = client.post(
+        f"/simulations/{uuid4()}/plants",
+        json=_tranche_payload(),
+    )
+
+    assert response.status_code == 404
