@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -22,10 +23,12 @@ from chaours.types import (
 
 router = APIRouter(prefix="/simulations", tags=["simulations"])
 
+SessionDep = Annotated[Session, Depends(get_session)]
+
 
 @router.get("/", response_model=list[SimulationResume])
 def list_simulations(
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ) -> list[SimulationResume]:
     """Renvoie le résumé de toutes les simulations."""
     return repository.list_simulations(session)
@@ -38,7 +41,7 @@ def list_simulations(
 )
 def create_simulation(
     payload: SimulationCreation,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ) -> Simulation:
     """Crée une simulation avec un identifiant généré par le serveur."""
     return repository.create_simulation(session, payload)
@@ -47,7 +50,7 @@ def create_simulation(
 @router.get("/{simulation_id}", response_model=Simulation)
 def get_simulation(
     simulation_id: UUID,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ) -> Simulation:
     """Renvoie une simulation complète."""
     simulation = repository.get_simulation(session, simulation_id)
@@ -63,7 +66,7 @@ def get_simulation(
 def update_simulation(
     simulation_id: UUID,
     payload: ParametresSimulation,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ) -> Simulation:
     """Met à jour le nom, l'horizon et les séries nationales."""
     simulation = repository.update_simulation(
@@ -85,7 +88,7 @@ def update_simulation(
 )
 def delete_simulation(
     simulation_id: UUID,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ) -> Response:
     """Supprime une simulation et ses dépendances."""
     if not repository.delete_simulation(session, simulation_id):
@@ -104,7 +107,7 @@ def delete_simulation(
 def add_tranche(
     simulation_id: UUID,
     payload: SimulationTranche,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ) -> Simulation:
     """Ajoute une tranche à une simulation existante."""
     simulation = repository.add_tranche(
@@ -128,7 +131,7 @@ def update_tranche(
     simulation_id: UUID,
     plant_id: str,
     payload: ConfigurationTranche,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ) -> Simulation:
     """Met à jour la configuration d'une tranche."""
     simulation = repository.update_tranche(
@@ -153,7 +156,7 @@ def update_arrets(
     simulation_id: UUID,
     plant_id: str,
     arrets: list[Arret],
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ) -> Simulation:
     """Remplace les arrêts d'une tranche."""
     simulation = repository.replace_arrets(
@@ -178,7 +181,7 @@ def update_modulations(
     simulation_id: UUID,
     plant_id: str,
     modulations: list[Modulation],
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ) -> Simulation:
     """Remplace les modulations d'une tranche."""
     simulation = repository.replace_modulations(
@@ -201,7 +204,7 @@ def update_modulations(
 )
 def run_simulation(
     simulation_id: UUID,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ) -> ResultatSimulation:
     """Exécute le moteur sur la simulation persistée."""
     simulation = repository.get_simulation(session, simulation_id)
