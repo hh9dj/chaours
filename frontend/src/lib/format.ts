@@ -41,10 +41,6 @@ export function formaterPourcentage(ratio: number): string {
   return `${formaterNombre(ratio * 100)} %`
 }
 
-export function formaterJour(jour: number): string {
-  return `Jour ${jour}`
-}
-
 export function analyserSerie(texte: string): {
   valeurs: number[]
   erreur: string | null

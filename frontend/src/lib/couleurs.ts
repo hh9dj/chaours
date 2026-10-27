@@ -33,13 +33,6 @@ export const classesCouleurJepp: Record<CouleurJepp, string> = {
   rouge: 'bg-red-600',
 }
 
-export const classesBordureJepp: Record<CouleurJepp, string> = {
-  vert: 'border-emerald-500',
-  jaune: 'border-amber-400',
-  orange: 'border-orange-500',
-  rouge: 'border-red-600',
-}
-
 export const libellesCouleurJepp: Record<CouleurJepp, string> = {
   vert: 'JEPP supérieur ou égal à 50 %',
   jaune: 'JEPP entre 20 % et 50 %',

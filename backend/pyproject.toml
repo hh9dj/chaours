@@ -6,6 +6,7 @@ dependencies = [
     "fastapi>=0.162.0",
     "numpy>=2.5.4",
     "pydantic>=2.14.1",
+    "pydantic-settings>=2.16.1",
     "sqlmodel>=0.0.48",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -22,7 +23,15 @@ pythonVersion = "3.12"
 
 [tool.mypy]
 python_version = "3.12"
-files = ["chaours", "tests"]
+files = [
+    "api",
+    "cli.py",
+    "core",
+    "db",
+    "main.py",
+    "services",
+    "tests",
+]
 mypy_path = "."
 check_untyped_defs = true
 warn_unused_ignores = true

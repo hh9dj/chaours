@@ -29,13 +29,10 @@ backend-typecheck:
 backend-check: backend-test backend-typecheck
 
 backend-run:
-    uv run --directory backend python -m chaours
-
-backend-benchmark:
-    uv run --directory backend python -m chaours --benchmark
+    uv run --directory backend python cli.py
 
 backend-api:
-    uv run --directory backend uvicorn chaours.api.main:app --reload
+    uv run --directory backend uvicorn api.app:app --reload
 
 check: test build backend-check
 

@@ -1,1 +1,0 @@
-"""Application FastAPI CHAOURS."""

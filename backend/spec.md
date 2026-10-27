@@ -20,51 +20,89 @@ Required modules:
 
 ```text
 backend/
-  chaours/
-    types.py
-    engine.py
-    production.py
-    jepp.py
-    aggregation.py
-    alerts.py
-    __main__.py
-    db/
+  api/
+    __init__.py
+    app.py
+    config.py
+    schemas.py
+    routers/
       __init__.py
-      models.py
-      session.py
-      repository.py
-    api/
+      simulations.py
+  core/
+    __init__.py
+    models.py
+    engine/
       __init__.py
-      context.py
-      main.py
-      deps.py
-      routes/
-        __init__.py
-        simulations.py
+      pipeline.py
+      production.py
+      jepp.py
+      aggregation.py
+      alerts.py
+  services/
+    __init__.py
+    simulations.py
+  db/
+    __init__.py
+    config.py
+    database.py
+    tables.py
+    repository.py
+    seed.py
+  main.py
+  cli.py
   tests/
-    test_models.py
-    test_engine.py
-    test_production.py
-    test_jepp.py
-    test_aggregation.py
-    test_alerts.py
-    test_db_repository.py
-    test_api.py
+    unit/
+      domain/
+        test_models.py
+        test_aggregates.py
+      engine/
+        test_engine.py
+        test_production.py
+        test_jepp.py
+        test_aggregation.py
+        test_alerts.py
+      test_config.py
+    integration/
+      simulations/
+        test_repository.py
+        test_service.py
+      api/
+        test_simulations.py
 ```
+
+The backend uses four packages:
+
+- `core/` holds the domain: input models, result models, shared domain building blocks, and the calculation engine.
+- `services/` holds the application use cases: orchestration, missing-data error translation, and the engine call.
+- `api/` holds the HTTP adapter: the FastAPI application, API configuration, request and response schemas, and routers.
+- `db/` holds persistence: settings, engine and session construction, SQLModel tables, the repository implementation, and the demo seed.
+
+`main.py` starts uvicorn. `cli.py` runs the local simulation CLI.
 
 Dependency direction:
 
-- `api` depends on `db` and `engine`.
-- `db` depends on `types`.
-- `engine` depends on `types` and computation modules.
-- `types` must not depend on FastAPI, SQLModel, or SQLAlchemy.
+- `core.models` depends only on Pydantic, NumPy, and the standard library.
+- `core.engine` depends on `core.models`.
+- `api.schemas` depends on `core.models` only. It must not import FastAPI, `services`, or `db`.
+- `services.simulations` depends on `core.models`, `core.engine`, `api.schemas`, and `db.repository`.
+- `db.config` depends only on Pydantic Settings.
+- `db.database` depends on `db.config`, SQLAlchemy or SQLModel, and FastAPI only for request dependencies. It never imports a service or router.
+- `db.tables` depends on `core.models`.
+- `db.repository` depends on `core.models`, `api.schemas`, and `db.tables`.
+- `db.seed` depends on `core.models`, `api.schemas`, `db.database`, and `db.repository`.
+- `api.routers` depends on `api.schemas`, `services.simulations`, `core`, and `db`.
+- `api.app` depends on `api.routers`, `api.config`, `core.models`, `db.database`, `db.tables`, and `db.seed`.
+- `cli` depends on `core.models` and `core.engine`. It must not import `api.app` or the routers.
+- `core.models` must not depend on FastAPI, SQLModel, or SQLAlchemy.
 - The engine must not depend on SQLAlchemy.
+- Keep `api/__init__.py` and `services/__init__.py` empty so imports have no application side effects.
 
 ## 3. Stack and commands
 
 - Python 3.12.
 - NumPy.
 - Pydantic v2.
+- Pydantic Settings.
 - FastAPI.
 - SQLModel and SQLite.
 - uv.
@@ -75,15 +113,14 @@ Commands:
 
 ```sh
 direnv exec . just backend-check
-direnv exec . uv run --directory backend pytest tests/test_api.py
-direnv exec . uv run --directory backend python -m chaours
-direnv exec . uv run --directory backend python -m chaours --benchmark
+direnv exec . uv run --directory backend pytest tests/integration/api/test_simulations.py
+direnv exec . uv run --directory backend python cli.py
 direnv exec . just backend-api
 ```
 
 ## 4. Domain models
 
-All domain models live in `backend/chaours/types.py`.
+All domain models live in `backend/core/models.py`. Entity models, result models, enums, constants, NumPy array aliases, and domain errors are in `core/models.py`. API and service contracts live in `backend/api/schemas.py`.
 
 Use `ConfigDict(extra="forbid", validate_assignment=True)` on domain and result models.
 
@@ -201,12 +238,6 @@ Keep enum string values unchanged because they are protocol and UI codes.
 `Simulation`
 
 - `arrets_par_tranche -> dict[str, tuple[Arret, ...]]`
-- `modulations_par_tranche -> dict[str, tuple[Modulation, ...]]`
-
-`ResultatSimulation`
-
-- `alertes_par_tranche -> dict[str, tuple[Alerte, ...]]`
-- `alertes_nationales -> tuple[Alerte, ...]`
 
 ## 5. Validation rules
 
@@ -236,7 +267,7 @@ Result validation:
 
 ## 6. Database schema
 
-Tables use French names and columns. Use SQLModel table models in `backend/chaours/db/models.py`.
+Tables use French names and columns. Use SQLModel table models in `backend/db/tables.py`.
 
 `simulations`
 
@@ -335,32 +366,30 @@ Results are recomputed by `POST /simulations/{simulation_id}/run` after loading 
 
 ## 8. Repository layer
 
-Implement in `backend/chaours/db/repository.py`.
+Implement `SimulationRepository` in `backend/db/repository.py`. The service layer in `backend/services/simulations.py` owns use cases and translates missing data into `SimulationNotFoundError` or `TrancheNotFoundError`.
 
-Required functions:
+Repository methods:
 
-- `list_simulations(session) -> list[SimulationResume]`
-- `create_simulation(session, payload: SimulationCreation) -> Simulation`
-- `get_simulation(session, simulation_id: UUID) -> Simulation | None`
-- `update_simulation(session, simulation_id: UUID, payload: ParametresSimulation) -> Simulation | None`
-- `update_tranche(session, simulation_id: UUID, plant_id: str, payload: ConfigurationTranche) -> Simulation | None`
-- `add_tranche(session, simulation_id: UUID, payload: SimulationTranche) -> Simulation | None`
-- `replace_arrets(session, simulation_id: UUID, plant_id: str, arrets: list[Arret]) -> Simulation | None`
-- `replace_modulations(session, simulation_id: UUID, plant_id: str, modulations: list[Modulation]) -> Simulation | None`
-- `delete_simulation(session, simulation_id: UUID) -> bool`
-- `duplicate_simulation(session, simulation_id: UUID) -> Simulation | None` (repository capability, not exposed by the API in this iteration)
+- `list_all() -> list[SimulationResume]`
+- `create(payload: SimulationCreation, simulation_id: UUID | None = None) -> Simulation`
+- `get(simulation_id: UUID) -> Simulation | None`
+- `update(simulation_id: UUID, payload: ParametresSimulation) -> Simulation | None`
+- `update_tranche(simulation_id: UUID, plant_id: str, payload: ConfigurationTranche) -> Simulation | None`
+- `add_tranche(simulation_id: UUID, payload: SimulationTranche) -> Simulation | None`
+- `replace_arrets(simulation_id: UUID, plant_id: str, arrets: list[Arret]) -> Simulation | None`
+- `replace_modulations(simulation_id: UUID, plant_id: str, modulations: list[Modulation]) -> Simulation | None`
+- `delete(simulation_id: UUID) -> bool`
 
 Repository rules:
 
 - Convert explicitly between Pydantic models and SQLModel rows.
 - Reconstruct and validate the full `Simulation` on every read.
 - Verify that `donnees_journalieres` rows are exactly `0 .. horizon_jours - 1`. Reject gaps, duplicates, missing days, and out-of-horizon days.
-- `create_simulation` generates `simulation_id` and `cree_le`.
-- `update_simulation` replaces name, horizon, and all three series. The client must send complete resized series.
+- `create` generates `simulation_id` and `cree_le`.
+- `update` replaces name, horizon, and all three series. The client must send complete resized series.
 - `update_tranche` does not allow changing `identifiant`.
 - Schedule replacement rebuilds the full simulation, validates it with Pydantic, then persists it. No out-of-horizon or overlapping schedule may be persisted.
-- `duplicate_simulation` gets a new UUID, current timestamp, and suffixed name.
-- `delete_simulation` returns `False` for an unknown id and relies on database cascade for children.
+- `delete` returns `False` for an unknown id and relies on database cascade for children.
 - Do not mutate nested lists in place.
 
 ## 9. API contract
@@ -369,17 +398,17 @@ Use sync FastAPI endpoints and sync SQLModel sessions.
 
 Application factory:
 
-- `create_app(database_url: str | None = None) -> FastAPI`.
+- `create_app(database_url: str | None = None) -> FastAPI` in `backend/api/app.py`.
 - Module-level `app = create_app()` for uvicorn.
 - Build a typed `AppContext` during lifespan startup.
 - Create tables during lifespan startup.
 - Seed the demonstration simulation with a fixed id when it is absent.
 - Dispose the SQLAlchemy engine during lifespan shutdown.
 - Expose the context and sessions only through FastAPI dependencies. Route handlers must not read `app.state` directly.
-- Add CORS for local Vue development origins.
-- Include the simulations router.
+- Add CORS for local Vue development origins from `backend/api/config.py`.
+- Include the simulations router from `backend/api/routers/simulations.py`.
 - Register a Pydantic `ValidationError` handler that returns `422`.
-- Use `CHAOURS_DATABASE_URL` with fallback `sqlite:///./chaours.db`.
+- Use `CHAOURS_DATABASE_URL` with fallback `sqlite:///./chaours.db`, read through `Settings` in `backend/db/config.py`.
 
 Path convention:
 
@@ -457,7 +486,7 @@ Endpoints:
 `POST /simulations/{simulation_id}/run`
 
 - Loads and validates the persisted `Simulation`.
-- Runs `NucliEngine`.
+- Runs `SimulationEngine`.
 - Response: `ResultatSimulation`.
 - Status: `200`.
 - Unknown simulation: `404`.
@@ -466,7 +495,7 @@ Do not duplicate validation in routes or repository. Reconstruct Pydantic models
 
 ## 10. Engine integration
 
-Update `backend/chaours/engine.py` and computation modules:
+Update `backend/core/engine/` and its computation modules:
 
 - Rename model references to the French classes and fields.
 - Convert the three national Pydantic lists to NumPy arrays internally.
@@ -475,17 +504,16 @@ Update `backend/chaours/engine.py` and computation modules:
 - Keep `NEUTRONIC_ANOMALY` and `REMIT_UMM` as per-tranche alerts.
 - Keep `RTE_DEFICIT` as a national alert.
 - Keep `duree_execution_ms` as core engine compute time.
-- Keep the benchmark around `engine.run`, including Pydantic output validation, under 40 ms.
 
 ## 11. CLI and local configuration
 
-Update `backend/chaours/__main__.py`:
+Update `backend/cli.py`:
 
 - Build `Simulation` and `SimulationTranche` models directly.
 - Use the French fields.
 - Use flat national series for spot, demand, and VU.
-- Update mock and benchmark simulations.
-- Keep `python -m chaours` and `python -m chaours --benchmark`.
+- Update the mock simulation.
+- Keep `python cli.py`.
 
 Local database:
 
@@ -497,11 +525,13 @@ Local database:
 
 Required tests:
 
-- `test_models.py`: all Pydantic validation rules, national VU series, result consistency.
-- `test_engine.py`: computation and integration with the new models.
-- `test_production.py`, `test_jepp.py`, `test_aggregation.py`, `test_alerts.py`: computation behavior without duplicate validation tests.
-- `test_db_repository.py`: CRUD, list summaries, cascade deletion, day-row integrity, round-trip, tranche update, schedule replacement, validation failure, isolation.
-- `test_api.py`: list, create, get, add tranche, update settings, update tranche config, update outages, update modulations, run, delete, `404`, `422`.
+- `unit/domain/test_models.py`: all Pydantic validation rules, national VU series, result consistency.
+- `unit/engine/test_engine.py`: computation and integration with the new models.
+- `unit/engine/test_production.py`, `test_jepp.py`, `test_aggregation.py`, `test_alerts.py`: computation behavior without duplicate validation tests.
+- `unit/test_config.py`: settings defaults, environment override, explicit argument precedence.
+- `integration/simulations/test_repository.py`: CRUD, list summaries, cascade deletion, day-row integrity, round-trip, tranche update, schedule replacement, validation failure, isolation.
+- `integration/simulations/test_service.py`: service use cases and missing-data errors.
+- `integration/api/test_simulations.py`: list, create, get, add tranche, update settings, update tranche config, update outages, update modulations, run, delete, `404`, `422`.
 
 Use in-memory SQLite for repository and API tests. Use FastAPI `TestClient`.
 
@@ -526,6 +556,5 @@ Use in-memory SQLite for repository and API tests. Use FastAPI `TestClient`.
 - [x] Delete the local old `chaours.db`.
 - [x] Run `just backend-check`.
 - [x] Run the CLI.
-- [x] Run the benchmark and confirm `PASS`.
 - [x] Remove alert gravity levels from the API.
 - [x] Leave changes uncommitted.
