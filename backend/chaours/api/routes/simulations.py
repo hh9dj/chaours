@@ -19,6 +19,7 @@ from chaours.types import (
     SimulationTranche,
 )
 
+# TODO: think about grouping / restructuring apis by domain / ressources.
 router = APIRouter(prefix="/simulations", tags=["simulations"])
 
 SessionDep = Annotated[Session, Depends(get_session)]

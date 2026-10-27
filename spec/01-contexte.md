@@ -24,7 +24,6 @@ CHAOURS est un simulateur interactif d'aide à la décision. Il permet de :
 
 CHAOURS est une application web organisée autour de simulations isolées :
 
-- le dashboard liste les simulations sous forme de cartes et permet d'en créer une nouvelle ;
 - une simulation contient un horizon, des séries journalières nationales et plusieurs tranches ;
 - chaque tranche possède un calendrier d'arrêts et de modulations ;
 - une timeline par tranche montre la production, les arrêts, les modulations et le niveau de JEPP ;

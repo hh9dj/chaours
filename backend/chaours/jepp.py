@@ -5,6 +5,8 @@ import numpy as np
 from chaours.types import Arret, FloatArray
 
 
+# TODO: remove private functions
+# return types as dataclass
 def _consume_cycle(
     requested_factors: FloatArray,
     start_day: int,

@@ -29,6 +29,7 @@ async def _pydantic_validation_handler(
     )
 
 
+# TODO: add logging middleware.
 def create_app(
     database_url: str | None = None,
     seed_demo: bool = True,
