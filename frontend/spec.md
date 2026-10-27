@@ -134,13 +134,13 @@ interface Modulation {
   facteur: number;
 }
 
-interface Simulation {
+interface SimulationTranche {
   tranche: Tranche;
   arrets: Arret[];
   modulations: Modulation[];
 }
 
-interface Scenario {
+interface Simulation {
   simulation_id: string;
   nom: string;
   cree_le: string;
@@ -148,7 +148,7 @@ interface Scenario {
   prix_spot_eur_mwh: number[];
   demande_nationale_mwh: number[];
   valeur_usage_eur_mwh: number[];
-  tranches: Simulation[];
+  tranches: SimulationTranche[];
 }
 
 interface SimulationResume {
@@ -159,13 +159,13 @@ interface SimulationResume {
   nombre_tranches: number;
 }
 
-interface ScenarioCreation {
+interface SimulationCreation {
   nom: string;
   horizon_jours: number;
   prix_spot_eur_mwh: number[];
   demande_nationale_mwh: number[];
   valeur_usage_eur_mwh: number[];
-  tranches: Simulation[];
+  tranches: SimulationTranche[];
 }
 
 interface ParametresSimulation {
@@ -212,13 +212,13 @@ interface ResultatSimulation {
 Endpoints :
 
 - `GET /simulations/` : renvoie `SimulationResume[]`.
-- `POST /simulations/` : reçoit `ScenarioCreation`, renvoie `Scenario`, statut `201`.
-- `GET /simulations/{simulation_id}` : renvoie `Scenario`.
-- `PUT /simulations/{simulation_id}` : reçoit `ParametresSimulation`, renvoie `Scenario`.
+- `POST /simulations/` : reçoit `SimulationCreation`, renvoie `Simulation`, statut `201`.
+- `GET /simulations/{simulation_id}` : renvoie `Simulation`.
+- `PUT /simulations/{simulation_id}` : reçoit `ParametresSimulation`, renvoie `Simulation`.
 - `DELETE /simulations/{simulation_id}` : statut `204`.
-- `PUT /simulations/{simulation_id}/plants/{plant_id}` : reçoit `ConfigurationTranche`, renvoie `Scenario`.
-- `PUT /simulations/{simulation_id}/plants/{plant_id}/maintenances` : reçoit `Arret[]`, renvoie `Scenario`.
-- `PUT /simulations/{simulation_id}/plants/{plant_id}/modulations` : reçoit `Modulation[]`, renvoie `Scenario`.
+- `PUT /simulations/{simulation_id}/plants/{plant_id}` : reçoit `ConfigurationTranche`, renvoie `Simulation`.
+- `PUT /simulations/{simulation_id}/plants/{plant_id}/maintenances` : reçoit `Arret[]`, renvoie `Simulation`.
+- `PUT /simulations/{simulation_id}/plants/{plant_id}/modulations` : reçoit `Modulation[]`, renvoie `Simulation`.
 - `POST /simulations/{simulation_id}/run` : renvoie `ResultatSimulation`.
 
 Le paramètre `plant_id` est l'`identifiant` de la tranche. Il est immuable.
@@ -241,7 +241,7 @@ Navigation :
 Créer un store `simulations` avec :
 
 - `simulations: SimulationResume[]` ;
-- `currentScenario: Scenario | null` ;
+- `currentSimulation: Simulation | null` ;
 - `currentResult: ResultatSimulation | null` ;
 - `loading` ;
 - `error` ;
@@ -256,7 +256,7 @@ Le client API doit :
 
 Après chaque modification réussie :
 
-1. remplacer `currentScenario` par la réponse du `PUT` ;
+1. remplacer `currentSimulation` par la réponse du `PUT` ;
 2. appeler `POST /simulations/{simulation_id}/run` ;
 3. remplacer `currentResult` ;
 4. mettre à jour la timeline et la barre latérale.
@@ -505,21 +505,21 @@ Critères d'acceptation :
 
 ## 14. Feuille de route frontend
 
-- [ ] Mettre en place le router, le store Pinia et le client API.
-- [ ] Définir les types TypeScript du contrat API.
-- [ ] Implémenter le dashboard et les cartes de simulation.
-- [ ] Implémenter le dialogue de création.
-- [ ] Implémenter la vue simulation et le chargement du résultat.
-- [ ] Implémenter la timeline et ses calculs.
-- [ ] Implémenter l'éditeur de tranche.
-- [ ] Implémenter les paramètres de simulation.
-- [ ] Implémenter la barre latérale des alertes nationales.
-- [ ] Implémenter les popovers d'alerte de tranche.
-- [ ] Ajouter les états de chargement, vide et erreur.
-- [ ] Écrire les tests Vitest.
-- [ ] Vérifier `pnpm -C frontend test`.
-- [ ] Vérifier `pnpm -C frontend build`.
-- [ ] Laisser les changements non commités.
+- [x] Mettre en place le router, le store Pinia et le client API.
+- [x] Définir les types TypeScript du contrat API.
+- [x] Implémenter le dashboard et les cartes de simulation.
+- [x] Implémenter le dialogue de création.
+- [x] Implémenter la vue simulation et le chargement du résultat.
+- [x] Implémenter la timeline et ses calculs.
+- [x] Implémenter l’éditeur de tranche.
+- [x] Implémenter les paramètres de simulation.
+- [x] Implémenter la barre latérale des alertes nationales.
+- [x] Implémenter les popovers d'alerte de tranche.
+- [x] Ajouter les états de chargement, vide et erreur.
+- [x] Écrire les tests Vitest.
+- [x] Vérifier `pnpm -C frontend test`.
+- [x] Vérifier `pnpm -C frontend build`.
+- [x] Laisser les changements non commités.
 
 ## 15. Hors périmètre
 
