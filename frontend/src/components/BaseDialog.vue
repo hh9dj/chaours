@@ -43,7 +43,7 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <div
-      class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-sm sm:p-8"
+      class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-edf-blue-deep/55 p-4 backdrop-blur-sm sm:p-8"
       @click.self="closeable && fermer()"
     >
       <section
@@ -52,11 +52,11 @@ onBeforeUnmount(() => {
         aria-modal="true"
         :aria-labelledby="titreId"
         tabindex="-1"
-        class="my-auto w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        class="my-auto w-full overflow-hidden rounded-2xl border border-edf-grey bg-white shadow-2xl"
         :class="taille === 'large' ? 'max-w-5xl' : 'max-w-2xl'"
       >
         <header
-          class="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5"
+          class="flex items-start justify-between gap-4 border-b border-edf-grey px-6 py-5"
         >
           <div>
             <h2 :id="titreId" class="text-lg font-semibold text-slate-950">
@@ -83,7 +83,7 @@ onBeforeUnmount(() => {
 
         <footer
           v-if="$slots.pied"
-          class="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4"
+          class="flex flex-wrap items-center justify-end gap-3 border-t border-edf-grey bg-edf-paper px-6 py-4"
         >
           <slot name="pied" />
         </footer>

@@ -9,7 +9,6 @@ from chaours.types import (
     Alerte,
     Arret,
     FloatArray,
-    Gravite,
     IntArray,
     ResultatTranche,
     TypeAlerte,
@@ -26,7 +25,7 @@ def neutronic_alerts(
     ``ResultatTranche.jours_epuisement``, cherche le prochain
     ``jour_debut`` d'arrêt strictement supérieur à ce jour pour la même
     tranche. Renvoie une alerte ``NEUTRONIC_ANOMALY`` par jour de déplétion,
-    de gravité ``CRITICAL``. Le message demande une modulation manuelle.
+    Le message demande une modulation manuelle.
     """
     alerts: list[Alerte] = []
 
@@ -60,7 +59,6 @@ def neutronic_alerts(
                     jour=day,
                     tranche_id=resultat.tranche_id,
                     message=message,
-                    gravite=Gravite.CRITICAL,
                 )
             )
 
@@ -98,7 +96,6 @@ def remit_alerts(
                         f"{tranche_id} au jour {day} : "
                         f"{variation:+.2f} MW (seuil {threshold_mw:.2f} MW)."
                     ),
-                    gravite=Gravite.WARNING,
                 )
             )
 
@@ -128,7 +125,6 @@ def spot_below_usage_value_alerts(
                     "Prix spot inférieur à la valeur d'usage : "
                     f"{spot:.2f} €/MWh < {usage_value:.2f} €/MWh."
                 ),
-                gravite=Gravite.WARNING,
             )
         )
     return alerts
@@ -152,7 +148,6 @@ def deficit_alerts(deficit_day_indices: IntArray) -> list[Alerte]:
                     f"Déficit national au jour {day} : "
                     "l'offre est inférieure à la demande."
                 ),
-                gravite=Gravite.CRITICAL,
             )
         )
 

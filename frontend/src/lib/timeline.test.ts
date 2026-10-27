@@ -44,42 +44,36 @@ const alertes: Alerte[] = [
     jour: 3,
     tranche_id: 'T1',
     message: 'Stock insuffisant.',
-    gravite: 'CRITICAL',
   },
   {
     type_alerte: 'REMIT_UMM',
     jour: 3,
     tranche_id: 'T2',
     message: 'Variation de puissance.',
-    gravite: 'WARNING',
   },
   {
     type_alerte: 'REMIT_UMM',
     jour: null,
     tranche_id: 'T1',
     message: 'Variation hors timeline.',
-    gravite: 'WARNING',
   },
   {
     type_alerte: 'RTE_DEFICIT',
     jour: 2,
     tranche_id: null,
     message: 'Offre insuffisante.',
-    gravite: 'CRITICAL',
   },
   {
     type_alerte: 'SPOT_BELOW_USAGE_VALUE',
     jour: 3,
     tranche_id: null,
     message: 'Prix spot sous la valeur d’usage.',
-    gravite: 'WARNING',
   },
   {
     type_alerte: 'RTE_DEFICIT',
     jour: 4,
     tranche_id: 'T1',
     message: 'Incohérence de portée.',
-    gravite: 'CRITICAL',
   },
 ]
 
@@ -184,6 +178,38 @@ describe('filtrage des alertes', () => {
             alerte.type_alerte === 'SPOT_BELOW_USAGE_VALUE'),
       ),
     ).toBe(true)
+  })
+
+  it('filtre les alertes nationales par type', () => {
+    const resultat = filtrerAlertesNationales(alertes, {
+      type: 'RTE_DEFICIT',
+      jourDebut: null,
+      jourFin: null,
+    })
+
+    expect(resultat).toHaveLength(1)
+    expect(resultat[0].type_alerte).toBe('RTE_DEFICIT')
+  })
+
+  it('filtre les alertes nationales par plage de jours', () => {
+    const resultat = filtrerAlertesNationales(alertes, {
+      type: null,
+      jourDebut: 3,
+      jourFin: 3,
+    })
+
+    expect(resultat).toHaveLength(1)
+    expect(resultat[0].jour).toBe(3)
+  })
+
+  it('combine les filtres d’alertes nationales', () => {
+    const resultat = filtrerAlertesNationales(alertes, {
+      type: 'SPOT_BELOW_USAGE_VALUE',
+      jourDebut: 2,
+      jourFin: 2,
+    })
+
+    expect(resultat).toEqual([])
   })
 })
 

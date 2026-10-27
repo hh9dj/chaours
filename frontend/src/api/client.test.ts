@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   ApiError,
+  ajouterTranche,
   chargerSimulation,
   creerSimulation,
   listerSimulations,
@@ -111,6 +112,27 @@ describe('client API', () => {
     expect((erreur as ApiError).message).toContain('Données invalides')
     expect((erreur as ApiError).message).toContain('horizon_jours')
     expect((erreur as ApiError).message).toContain('Champ obligatoire')
+  })
+
+  it('ajoute une tranche avec un POST sur le chemin plants', async () => {
+    const payload = {
+      tranche: {
+        identifiant: 'P3',
+        code_eic: 'EIC-P3',
+        puissance_nominale_mw: 900,
+        jepp_initial: 300,
+      },
+      arrets: [],
+      modulations: [],
+    }
+    fetchMock.mockResolvedValue(reponseJson({ simulation_id: 'sim 1' }, 201))
+
+    await ajouterTranche('sim 1', payload)
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://localhost:8000/simulations/sim%201/plants')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual(payload)
   })
 
   it('encode les identifiants dans les chemins de tranche', async () => {

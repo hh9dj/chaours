@@ -5,7 +5,6 @@ from uuid import uuid4
 from chaours.types import (
     Alerte,
     Arret,
-    Gravite,
     Modulation,
     ResultatSimulation,
     ResultatTranche,
@@ -101,14 +100,12 @@ def test_result_alerts_are_grouped_by_tranche_and_national():
         jour=1,
         tranche_id="P1",
         message="Alerte tranche.",
-        gravite=Gravite.WARNING,
     )
     national_alert = Alerte(
         type_alerte=TypeAlerte.RTE_DEFICIT,
         jour=2,
         tranche_id=None,
         message="Alerte nationale.",
-        gravite=Gravite.CRITICAL,
     )
     result = ResultatSimulation(
         simulation_id=uuid4(),

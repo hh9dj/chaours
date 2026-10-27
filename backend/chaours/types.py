@@ -52,14 +52,6 @@ class TypeAlerte(str, Enum):
     SPOT_BELOW_USAGE_VALUE = "SPOT_BELOW_USAGE_VALUE"
 
 
-class Gravite(str, Enum):
-    """Niveau de gravité d'une alerte."""
-
-    INFO = "INFO"
-    WARNING = "WARNING"
-    CRITICAL = "CRITICAL"
-
-
 class _DomainModel(BaseModel):
     """Base des modèles métier mutables et stricts."""
 
@@ -358,14 +350,12 @@ class Alerte(_DomainModel):
     - ``tranche_id`` : tranche concernée, ou ``None`` pour une alerte
       nationale.
     - ``message`` : texte destiné à l'interface, en français.
-    - ``gravite`` : niveau de gravité.
     """
 
     type_alerte: TypeAlerte
     jour: int | None
     tranche_id: str | None
     message: str
-    gravite: Gravite
 
 
 class ResultatSimulation(_DomainModel):

@@ -8,8 +8,15 @@ import {
   formaterSerie,
   redimensionnerSerie,
 } from '../lib/format'
+import {
+  adapterPointsCourbe,
+  construireSerie,
+  etatInitial,
+  type EtatSerie,
+} from '../lib/series'
 import { useSimulationsStore } from '../stores/simulations'
 import BaseDialog from './BaseDialog.vue'
+import SerieDistributionEditor from './SerieDistributionEditor.vue'
 
 const props = defineProps<{
   simulationId: string
@@ -21,21 +28,62 @@ const emit = defineEmits<{
   enregistre: []
 }>()
 
+type ChampSerie =
+  | 'prix_spot_eur_mwh'
+  | 'demande_nationale_mwh'
+  | 'valeur_usage_eur_mwh'
+
+interface DefinitionSerie {
+  cle: ChampSerie
+  libelle: string
+  unite: string
+  plancher: number | null
+}
+
 const store = useSimulationsStore()
+
+const champs: DefinitionSerie[] = [
+  {
+    cle: 'prix_spot_eur_mwh',
+    libelle: 'Prix spot',
+    unite: '€/MWh',
+    plancher: null,
+  },
+  {
+    cle: 'demande_nationale_mwh',
+    libelle: 'Demande nationale',
+    unite: 'MWh',
+    plancher: 0,
+  },
+  {
+    cle: 'valeur_usage_eur_mwh',
+    libelle: 'Valeur d’usage',
+    unite: '€/MWh',
+    plancher: null,
+  },
+]
 
 const formulaire = reactive({
   nom: props.simulation.nom,
   horizon_jours: props.simulation.horizon_jours,
 })
-const series = reactive({
-  prix_spot_eur_mwh: formaterSerie(props.simulation.prix_spot_eur_mwh),
-  demande_nationale_mwh: formaterSerie(
-    props.simulation.demande_nationale_mwh,
+
+const series = reactive<Record<ChampSerie, EtatSerie>>({
+  prix_spot_eur_mwh: etatInitial(
+    props.simulation.prix_spot_eur_mwh,
+    props.simulation.horizon_jours,
   ),
-  valeur_usage_eur_mwh: formaterSerie(
+  demande_nationale_mwh: etatInitial(
+    props.simulation.demande_nationale_mwh,
+    props.simulation.horizon_jours,
+  ),
+  valeur_usage_eur_mwh: etatInitial(
     props.simulation.valeur_usage_eur_mwh,
+    props.simulation.horizon_jours,
   ),
 })
+
+const ongletActif = ref<ChampSerie>('prix_spot_eur_mwh')
 const erreurs = ref<string[]>([])
 const erreurApi = ref<string | null>(null)
 const avertissement = ref<string | null>(null)
@@ -45,40 +93,53 @@ const horizonValide = computed(() => {
   return Number.isInteger(horizon) && horizon >= 1 && horizon <= 7305
 })
 
-function nombreDeValeurs(texte: string): number {
-  return texte
-    .split(/\r?\n/)
-    .map((ligne) => ligne.trim())
-    .filter((ligne) => ligne.length > 0).length
-}
+const horizonEffectif = computed(() =>
+  horizonValide.value ? Number(formulaire.horizon_jours) : 0,
+)
+
+const resultatsSeries = computed(() => ({
+  prix_spot_eur_mwh: construireSerie(
+    series.prix_spot_eur_mwh,
+    horizonEffectif.value,
+  ),
+  demande_nationale_mwh: construireSerie(
+    series.demande_nationale_mwh,
+    horizonEffectif.value,
+    { plancher: 0 },
+  ),
+  valeur_usage_eur_mwh: construireSerie(
+    series.valeur_usage_eur_mwh,
+    horizonEffectif.value,
+  ),
+}))
 
 function redimensionnerSeries() {
   avertissement.value = null
   if (!horizonValide.value) return
 
   const horizon = Number(formulaire.horizon_jours)
-  const champs = [
-    'prix_spot_eur_mwh',
-    'demande_nationale_mwh',
-    'valeur_usage_eur_mwh',
-  ] as const
+  for (const champ of champs) {
+    const etat = series[champ.cle]
 
-  const analyse = champs.map((champ) => analyserSerie(series[champ]))
-  const premiereErreur = analyse.find((resultat) => resultat.erreur)?.erreur
-  if (premiereErreur) {
-    erreurs.value = [premiereErreur]
-    return
-  }
+    if (etat.mode === 'manuelle') {
+      const analyse = analyserSerie(etat.manuelle)
+      if (!analyse.erreur) {
+        etat.manuelle = formaterSerie(
+          redimensionnerSerie(analyse.valeurs, horizon),
+        )
+      }
+    }
 
-  champs.forEach((champ, index) => {
-    series[champ] = formaterSerie(
-      redimensionnerSerie(analyse[index].valeurs, horizon),
+    etat.courbe = adapterPointsCourbe(etat.courbe, horizon)
+    etat.gaussienneJourPic = Math.min(
+      Math.max(0, Math.round(etat.gaussienneJourPic)),
+      Math.max(0, horizon - 1),
     )
-  })
+  }
 
   erreurs.value = []
   avertissement.value =
-    'Les séries ont été redimensionnées. Vérifiez leurs valeurs avant d’enregistrer.'
+    'Les séries ont été mises à jour pour le nouvel horizon. Vérifiez leurs valeurs avant d’enregistrer.'
 }
 
 function valider(): {
@@ -87,7 +148,6 @@ function valider(): {
   valeurUsage: number[]
 } | null {
   const messages: string[] = []
-  const horizon = Number(formulaire.horizon_jours)
 
   if (formulaire.nom.trim().length === 0) {
     messages.push('Le nom de la simulation est obligatoire.')
@@ -98,43 +158,33 @@ function valider(): {
     )
   }
 
-  const prix = analyserSerie(series.prix_spot_eur_mwh)
-  const demande = analyserSerie(series.demande_nationale_mwh)
-  const valeurUsage = analyserSerie(series.valeur_usage_eur_mwh)
-
-  if (prix.erreur) messages.push(`Prix spot : ${prix.erreur}`)
-  if (demande.erreur) messages.push(`Demande nationale : ${demande.erreur}`)
-  if (valeurUsage.erreur) {
-    messages.push(`Valeur d’usage : ${valeurUsage.erreur}`)
-  }
-
-  const seriesAValider = [
-    ['Prix spot', prix.valeurs, prix.erreur],
-    ['Demande nationale', demande.valeurs, demande.erreur],
-    ['Valeur d’usage', valeurUsage.valeurs, valeurUsage.erreur],
-  ] as const
-
-  if (horizonValide.value) {
-    for (const [libelle, valeurs, erreur] of seriesAValider) {
-      if (!erreur && valeurs.length !== horizon) {
-        messages.push(
-          `${libelle} : ${valeurs.length} valeur${valeurs.length > 1 ? 's' : ''} saisie${valeurs.length > 1 ? 's' : ''}, ${horizon} attendue${horizon > 1 ? 's' : ''}.`,
-        )
-      }
+  for (const champ of champs) {
+    const resultat = resultatsSeries.value[champ.cle]
+    if (resultat.erreur) {
+      messages.push(`${champ.libelle} : ${resultat.erreur}`)
     }
   }
 
-  if (demande.valeurs.some((valeur) => valeur < 0)) {
+  const demande = resultatsSeries.value.demande_nationale_mwh
+  if (!demande.erreur && demande.valeurs.some((valeur) => valeur < 0)) {
     messages.push('La demande nationale ne doit pas être négative.')
   }
 
   erreurs.value = messages
-  if (messages.length > 0) return null
+  if (messages.length > 0) {
+    const premiereSerieEnErreur = champs.find(
+      (champ) => resultatsSeries.value[champ.cle].erreur !== null,
+    )
+    if (premiereSerieEnErreur) {
+      ongletActif.value = premiereSerieEnErreur.cle
+    }
+    return null
+  }
 
   return {
-    prix: prix.valeurs,
-    demande: demande.valeurs,
-    valeurUsage: valeurUsage.valeurs,
+    prix: resultatsSeries.value.prix_spot_eur_mwh.valeurs,
+    demande: resultatsSeries.value.demande_nationale_mwh.valeurs,
+    valeurUsage: resultatsSeries.value.valeur_usage_eur_mwh.valeurs,
   }
 }
 
@@ -161,7 +211,7 @@ async function enregistrer() {
 <template>
   <BaseDialog
     titre="Paramètres de la simulation"
-    description="Modifiez le nom, l’horizon et les séries nationales journalières."
+    description="Modifiez le nom, l’horizon et les séries nationales générées."
     taille="large"
     :closeable="!store.saving"
     @fermer="emit('fermer')"
@@ -216,64 +266,66 @@ async function enregistrer() {
       </div>
 
       <p class="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-        Chaque série doit contenir exactement
+        Chaque série est générée sur
         <strong>{{ horizonValide ? formulaire.horizon_jours : '—' }}</strong>
-        valeur{{ Number(formulaire.horizon_jours) > 1 ? 's' : '' }}, une par
-        ligne. Le copier-coller de séries est autorisé.
+        jour{{ Number(formulaire.horizon_jours) > 1 ? 's' : '' }}. Les valeurs
+        sont converties en une valeur par jour avant l’enregistrement.
       </p>
 
-      <div class="grid gap-4 lg:grid-cols-3">
-        <div>
-          <label for="parametres-prix" class="etiquette">
-            Prix spot (€/MWh)
-          </label>
-          <textarea
-            id="parametres-prix"
-            v-model="series.prix_spot_eur_mwh"
-            class="champ min-h-44 font-mono text-xs leading-relaxed"
-            spellcheck="false"
-          />
-          <p class="mt-1 text-[11px] text-slate-500">
-            {{ nombreDeValeurs(series.prix_spot_eur_mwh) }} valeur(s) saisie(s)
-          </p>
-        </div>
-
-        <div>
-          <label for="parametres-demande" class="etiquette">
-            Demande nationale (MWh)
-          </label>
-          <textarea
-            id="parametres-demande"
-            v-model="series.demande_nationale_mwh"
-            class="champ min-h-44 font-mono text-xs leading-relaxed"
-            spellcheck="false"
-          />
-          <p class="mt-1 text-[11px] text-slate-500">
-            {{ nombreDeValeurs(series.demande_nationale_mwh) }} valeur(s)
-            saisie(s)
-          </p>
-        </div>
-
-        <div>
-          <label for="parametres-valeur-usage" class="etiquette">
-            Valeur d’usage (€/MWh)
-          </label>
-          <textarea
-            id="parametres-valeur-usage"
-            v-model="series.valeur_usage_eur_mwh"
-            class="champ min-h-44 font-mono text-xs leading-relaxed"
-            spellcheck="false"
-          />
-          <p class="mt-1 text-[11px] text-slate-500">
-            {{ nombreDeValeurs(series.valeur_usage_eur_mwh) }} valeur(s)
-            saisie(s)
-          </p>
-        </div>
+      <div
+        class="flex flex-wrap gap-1 border-b border-slate-200"
+        role="tablist"
+        aria-label="Séries nationales"
+      >
+        <button
+          v-for="champ in champs"
+          :id="`onglet-${champ.cle}`"
+          :key="champ.cle"
+          type="button"
+          role="tab"
+          :aria-selected="ongletActif === champ.cle"
+          :aria-controls="`panneau-${champ.cle}`"
+          :tabindex="ongletActif === champ.cle ? 0 : -1"
+          class="-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-semibold transition"
+          :class="
+            ongletActif === champ.cle
+              ? 'border-edf-blue text-edf-blue'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          "
+          @click="ongletActif = champ.cle"
+        >
+          {{ champ.libelle }}
+          <span
+            v-if="resultatsSeries[champ.cle].erreur"
+            class="flex h-4 w-4 items-center justify-center rounded-full bg-red-100 text-[10px] font-black text-red-700"
+            aria-label="Cette série contient une erreur"
+          >
+            !
+          </span>
+        </button>
       </div>
 
+      <template v-for="champ in champs" :key="champ.cle">
+        <div
+          v-if="ongletActif === champ.cle"
+          :id="`panneau-${champ.cle}`"
+          role="tabpanel"
+          :aria-labelledby="`onglet-${champ.cle}`"
+        >
+          <SerieDistributionEditor
+            :libelle="champ.libelle"
+            :unite="champ.unite"
+            :horizon-jours="horizonEffectif"
+            :etat="series[champ.cle]"
+            :plancher="champ.plancher"
+          />
+        </div>
+      </template>
+
       <p class="text-xs text-slate-500">
-        Un changement d’horizon tronque les séries ou les étend avec leur
-        dernière valeur. Vérifiez le résultat avant l’enregistrement.
+        Les réglages de distribution ne sont pas conservés après la fermeture :
+        seules les valeurs journalières générées sont enregistrées. Un
+        changement d’horizon met à jour les séries.
       </p>
     </form>
 

@@ -202,10 +202,11 @@ def list_simulations(session: Session) -> list[SimulationResume]:
 def create_simulation(
     session: Session,
     payload: SimulationCreation,
+    simulation_id: UUID | None = None,
 ) -> Simulation:
     """Crée une simulation complète et la renvoie."""
     simulation = Simulation(
-        simulation_id=uuid4(),
+        simulation_id=simulation_id or uuid4(),
         nom=payload.nom,
         cree_le=datetime.now(UTC),
         horizon_jours=payload.horizon_jours,

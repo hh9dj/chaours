@@ -31,13 +31,16 @@ async def _pydantic_validation_handler(
     )
 
 
-def create_app(database_url: str | None = None) -> FastAPI:
+def create_app(
+    database_url: str | None = None,
+    seed_demo: bool = True,
+) -> FastAPI:
     """Construit l'application et configure son cycle de vie."""
     application = FastAPI(
         title="CHAOURS API",
         version="0.1.0",
         description="API de simulation des arrêts nucléaires.",
-        lifespan=create_lifespan(database_url),
+        lifespan=create_lifespan(database_url, seed_demo=seed_demo),
     )
 
     application.add_middleware(

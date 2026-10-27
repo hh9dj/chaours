@@ -91,7 +91,6 @@ Use `ConfigDict(extra="forbid", validate_assignment=True)` on domain and result 
 
 - `TypeArret`: `ASR`, `VP`, `VD`.
 - `TypeAlerte`: `NEUTRONIC_ANOMALY`, `REMIT_UMM`, `RTE_DEFICIT`, `SPOT_BELOW_USAGE_VALUE`.
-- `Gravite`: `INFO`, `WARNING`, `CRITICAL`.
 
 Keep enum string values unchanged because they are protocol and UI codes.
 
@@ -186,7 +185,6 @@ Keep enum string values unchanged because they are protocol and UI codes.
 - `jour: int | None`.
 - `tranche_id: str | None`.
 - `message: str`.
-- `gravite: Gravite`.
 
 `ResultatSimulation`
 
@@ -375,6 +373,7 @@ Application factory:
 - Module-level `app = create_app()` for uvicorn.
 - Build a typed `AppContext` during lifespan startup.
 - Create tables during lifespan startup.
+- Seed the demonstration simulation with a fixed id when it is absent.
 - Dispose the SQLAlchemy engine during lifespan shutdown.
 - Expose the context and sessions only through FastAPI dependencies. Route handlers must not read `app.state` directly.
 - Add CORS for local Vue development origins.
@@ -523,8 +522,10 @@ Use in-memory SQLite for repository and API tests. Use FastAPI `TestClient`.
 - [x] Update all backend tests.
 - [x] Allow simulations with an empty tranche list.
 - [x] Add a typed application context and lifespan-managed engine.
+- [x] Seed the demonstration simulation at startup.
 - [x] Delete the local old `chaours.db`.
 - [x] Run `just backend-check`.
 - [x] Run the CLI.
 - [x] Run the benchmark and confirm `PASS`.
+- [x] Remove alert gravity levels from the API.
 - [x] Leave changes uncommitted.

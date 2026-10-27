@@ -2,8 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import type { Simulation } from '../api/types'
+import type { Simulation, SimulationResume } from '../api/types'
 import AddSimulationCard from '../components/AddSimulationCard.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import CreateSimulationDialog from '../components/CreateSimulationDialog.vue'
 import SimulationCard from '../components/SimulationCard.vue'
 import { useSimulationsStore } from '../stores/simulations'
@@ -11,6 +12,7 @@ import { useSimulationsStore } from '../stores/simulations'
 const store = useSimulationsStore()
 const router = useRouter()
 const dialogueCreation = ref(false)
+const simulationASupprimer = ref<SimulationResume | null>(null)
 
 const nombreSimulations = computed(() => store.simulations.length)
 
@@ -24,6 +26,28 @@ async function simulationCreee(simulation: Simulation) {
   await router.push(`/simulations/${simulation.simulation_id}`)
 }
 
+function demanderSuppression(simulation: SimulationResume) {
+  store.reinitialiserErreur()
+  simulationASupprimer.value = simulation
+}
+
+function annulerSuppression() {
+  simulationASupprimer.value = null
+}
+
+async function confirmerSuppression() {
+  const simulation = simulationASupprimer.value
+  if (!simulation) return
+
+  try {
+    await store.supprimerSimulation(simulation.simulation_id)
+    simulationASupprimer.value = null
+  } catch {
+    // L'erreur est affichée par le store.
+    simulationASupprimer.value = null
+  }
+}
+
 onMounted(() => {
   void store.chargerListe()
 })
@@ -33,10 +57,10 @@ onMounted(() => {
   <section class="space-y-7">
     <header class="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-edf-blue">
           Tableau de bord
         </p>
-        <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">
+        <h1 class="mt-1 text-3xl font-bold tracking-tight text-edf-blue">
           Simulations
         </h1>
         <p class="mt-2 max-w-2xl text-sm text-slate-600">
@@ -54,7 +78,7 @@ onMounted(() => {
           simulation{{ nombreSimulations > 1 ? 's' : '' }}
         </span>
         <button type="button" class="bouton-primaire" @click="ouvrirCreation">
-          <span aria-hidden="true">+</span>
+          <span class="text-edf-orange" aria-hidden="true">+</span>
           Nouvelle simulation
         </button>
       </div>
@@ -115,6 +139,7 @@ onMounted(() => {
           v-for="simulation in store.simulations"
           :key="simulation.simulation_id"
           :simulation="simulation"
+          @supprimer="demanderSuppression(simulation)"
         />
         <AddSimulationCard @creer="ouvrirCreation" />
       </div>
@@ -124,6 +149,16 @@ onMounted(() => {
       v-if="dialogueCreation"
       @fermer="dialogueCreation = false"
       @cree="simulationCreee"
+    />
+
+    <ConfirmDialog
+      v-if="simulationASupprimer"
+      titre="Supprimer la simulation"
+      :message="`La simulation « ${simulationASupprimer.nom} », ses tranches, ses arrêts et ses modulations seront définitivement supprimés.`"
+      libelle-confirmation="Supprimer la simulation"
+      :occupe="store.saving"
+      @fermer="annulerSuppression"
+      @confirmer="confirmerSuppression"
     />
   </section>
 </template>

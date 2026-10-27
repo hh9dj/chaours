@@ -11,7 +11,6 @@ from pydantic import ValidationError
 from chaours.types import (
     Alerte,
     Arret,
-    Gravite,
     Modulation,
     ResultatSimulation,
     ResultatTranche,
@@ -369,7 +368,6 @@ def test_resultat_simulation_rejects_days_outside_horizon():
                     jour=2,
                     tranche_id="P1",
                     message="Alerte.",
-                    gravite=Gravite.WARNING,
                 )
             ]
         )
@@ -395,7 +393,6 @@ def test_resultat_simulation_accepts_alerts_without_day():
                 jour=None,
                 tranche_id="P1",
                 message="Alerte.",
-                gravite=Gravite.CRITICAL,
             )
         ]
     )

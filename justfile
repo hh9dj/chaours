@@ -6,19 +6,19 @@ default:
     @just --list
 
 setup:
-    pnpm -C {{frontend}} install
+    pnpm -C {{ frontend }} install
 
 backend-setup:
     uv sync --directory backend
 
 dev:
-    pnpm -C {{frontend}} dev
+    pnpm -C {{ frontend }} dev
 
 build:
-    pnpm -C {{frontend}} build
+    pnpm -C {{ frontend }} build
 
 test:
-    pnpm -C {{frontend}} test
+    pnpm -C {{ frontend }} test
 
 backend-test:
     uv run --directory backend pytest
@@ -40,4 +40,4 @@ backend-api:
 check: test build backend-check
 
 clean:
-    rm -rf {{frontend}}/dist {{frontend}}/node_modules
+    rm -rf {{ frontend }}/dist {{ frontend }}/node_modules

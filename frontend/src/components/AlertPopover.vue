@@ -2,7 +2,10 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 import type { Alerte } from '../api/types'
-import { classesGravite, libellesGravite } from '../lib/couleurs'
+import {
+  classesBordureTypeAlerte,
+  classesTypeAlerte,
+} from '../lib/couleurs'
 import { libelleTypeAlerte } from '../lib/timeline'
 
 const props = defineProps<{
@@ -68,16 +71,14 @@ onBeforeUnmount(() => {
         <li
           v-for="(alerte, index) in alertes"
           :key="`${alerte.type_alerte}-${index}`"
-          class="rounded-lg border border-slate-100 bg-slate-50/70 p-3"
+          class="rounded-lg border border-l-4 border-slate-100 bg-slate-50/70 p-3"
+          :class="classesBordureTypeAlerte[alerte.type_alerte]"
         >
           <div class="flex flex-wrap items-center gap-2">
             <span
               class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset"
-              :class="classesGravite[alerte.gravite]"
+              :class="classesTypeAlerte[alerte.type_alerte]"
             >
-              {{ libellesGravite[alerte.gravite] }}
-            </span>
-            <span class="text-xs font-semibold text-slate-700">
               {{ libelleTypeAlerte(alerte.type_alerte) }}
             </span>
           </div>

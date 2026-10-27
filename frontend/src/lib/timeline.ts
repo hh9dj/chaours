@@ -136,8 +136,41 @@ export function alertesTranchePourJour(
   )
 }
 
-export function filtrerAlertesNationales(alertes: Alerte[]): Alerte[] {
-  return alertes.filter(estAlerteNationale)
+export interface FiltresAlertes {
+  type: TypeAlerte | null
+  jourDebut: number | null
+  jourFin: number | null
+}
+
+const FILTRES_ALERTES_VIDES: FiltresAlertes = {
+  type: null,
+  jourDebut: null,
+  jourFin: null,
+}
+
+export function filtrerAlertesNationales(
+  alertes: Alerte[],
+  filtres: FiltresAlertes = FILTRES_ALERTES_VIDES,
+): Alerte[] {
+  return alertes.filter((alerte) => {
+    if (!estAlerteNationale(alerte)) return false
+    if (filtres.type !== null && alerte.type_alerte !== filtres.type) {
+      return false
+    }
+    if (filtres.jourDebut !== null && alerte.jour !== null) {
+      if (alerte.jour < filtres.jourDebut) return false
+    }
+    if (filtres.jourFin !== null && alerte.jour !== null) {
+      if (alerte.jour > filtres.jourFin) return false
+    }
+    if (
+      alerte.jour === null &&
+      (filtres.jourDebut !== null || filtres.jourFin !== null)
+    ) {
+      return false
+    }
+    return true
+  })
 }
 
 export function libelleTypeAlerte(type: TypeAlerte): string {

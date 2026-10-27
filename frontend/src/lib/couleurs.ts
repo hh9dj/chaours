@@ -1,3 +1,5 @@
+import type { TypeAlerte } from '../api/types'
+
 export type CouleurJepp = 'vert' | 'jaune' | 'orange' | 'rouge'
 
 export const SEUILS_JEPP = {
@@ -45,14 +47,23 @@ export const libellesCouleurJepp: Record<CouleurJepp, string> = {
   rouge: 'JEPP inférieur à 5 %',
 }
 
-export const classesGravite: Record<'INFO' | 'WARNING' | 'CRITICAL', string> = {
-  INFO: 'bg-slate-100 text-slate-700 ring-slate-300',
-  WARNING: 'bg-amber-50 text-amber-800 ring-amber-300',
-  CRITICAL: 'bg-red-50 text-red-800 ring-red-300',
+export const classesTypeAlerte: Record<TypeAlerte, string> = {
+  NEUTRONIC_ANOMALY: 'bg-red-50 text-red-800 ring-red-300',
+  REMIT_UMM: 'bg-violet-50 text-violet-800 ring-violet-300',
+  RTE_DEFICIT: 'bg-orange-50 text-orange-800 ring-orange-300',
+  SPOT_BELOW_USAGE_VALUE: 'bg-sky-50 text-sky-800 ring-sky-300',
 }
 
-export const libellesGravite: Record<'INFO' | 'WARNING' | 'CRITICAL', string> = {
-  INFO: 'Information',
-  WARNING: 'Avertissement',
-  CRITICAL: 'Critique',
+export const classesBordureTypeAlerte: Record<TypeAlerte, string> = {
+  NEUTRONIC_ANOMALY: 'border-l-red-500',
+  REMIT_UMM: 'border-l-violet-500',
+  RTE_DEFICIT: 'border-l-orange-500',
+  SPOT_BELOW_USAGE_VALUE: 'border-l-sky-500',
+}
+
+export const classesBadgeTypeAlerte: Record<TypeAlerte, string> = {
+  NEUTRONIC_ANOMALY: 'bg-red-700 text-white',
+  REMIT_UMM: 'bg-violet-700 text-white',
+  RTE_DEFICIT: 'bg-orange-700 text-white',
+  SPOT_BELOW_USAGE_VALUE: 'bg-sky-700 text-white',
 }

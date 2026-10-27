@@ -6,8 +6,6 @@ export type TypeAlerte =
   | 'RTE_DEFICIT'
   | 'SPOT_BELOW_USAGE_VALUE'
 
-export type Gravite = 'INFO' | 'WARNING' | 'CRITICAL'
-
 export interface Tranche {
   identifiant: string
   code_eic: string
@@ -88,7 +86,6 @@ export interface Alerte {
   jour: number | null
   tranche_id: string | null
   message: string
-  gravite: Gravite
 }
 
 export interface ResultatSimulation {

@@ -113,8 +113,6 @@ type TypeAlerte =
   | "RTE_DEFICIT"
   | "SPOT_BELOW_USAGE_VALUE";
 
-type Gravite = "INFO" | "WARNING" | "CRITICAL";
-
 interface Tranche {
   identifiant: string;
   code_eic: string;
@@ -195,7 +193,6 @@ interface Alerte {
   jour: number | null;
   tranche_id: string | null;
   message: string;
-  gravite: Gravite;
 }
 
 interface ResultatSimulation {
@@ -341,7 +338,7 @@ Alertes de tranche :
 
 - filtrer `currentResult.alertes` par `tranche_id` et `jour` ;
 - afficher une icône d'avertissement cliquable sur le jour concerné ;
-- l'icône ouvre `AlertPopover` avec le message, le jour et la gravité ;
+- l'icône ouvre `AlertPopover` avec le message et le jour ;
 - les alertes sans jour ne sont pas placées sur la timeline.
 
 Infobulle :
@@ -451,17 +448,8 @@ Chaque alerte affiche :
 
 - un titre lisible en français ;
 - le jour concerné ;
-- la gravité ;
 - le message du backend ;
 - pour une alerte de tranche, l'identifiant de la tranche.
-
-Couleurs de gravité :
-
-- `CRITICAL` : rouge ;
-- `WARNING` : ambre ;
-- `INFO` : neutre.
-
-Les couleurs sont accompagnées d'un libellé.
 
 ## 12. États, erreurs et accessibilité
 
@@ -507,13 +495,21 @@ Critères d'acceptation :
 
 - [x] Mettre en place le router, le store Pinia et le client API.
 - [x] Définir les types TypeScript du contrat API.
+- [x] Appliquer la palette EDF et le logo animé de la centrale.
 - [x] Implémenter le dashboard et les cartes de simulation.
+- [x] Ajouter la suppression des simulations depuis le dashboard et la vue simulation.
 - [x] Implémenter le dialogue de création.
+- [x] Ajouter une tranche depuis la vue simulation.
 - [x] Implémenter la vue simulation et le chargement du résultat.
+- [x] Ajouter les courbes de synthèse production/demande et spot/valeur d’usage.
 - [x] Implémenter la timeline et ses calculs.
+- [x] Ajouter le zoom Ctrl+molette synchronisé sur les timelines des tranches.
 - [x] Implémenter l’éditeur de tranche.
 - [x] Implémenter les paramètres de simulation.
+- [x] Remplacer l’édition textuelle des séries par des distributions et une courbe personnalisée.
 - [x] Implémenter la barre latérale des alertes nationales.
+- [x] Ajouter les filtres et le repli de la barre des alertes nationales.
+- [x] Supprimer les niveaux de gravité des alertes.
 - [x] Implémenter les popovers d'alerte de tranche.
 - [x] Ajouter les états de chargement, vide et erreur.
 - [x] Écrire les tests Vitest.

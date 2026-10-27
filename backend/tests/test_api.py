@@ -10,11 +10,13 @@ from fastapi.testclient import TestClient
 
 from chaours.api.context import AppContext
 from chaours.api.main import create_app
+from chaours.demo import DEMO_SIMULATION_NAME
+from chaours.types import TypeAlerte
 
 
 @pytest.fixture
 def client() -> Generator[TestClient, None, None]:
-    app = create_app("sqlite://")
+    app = create_app("sqlite://", seed_demo=False)
     with TestClient(app) as test_client:
         yield test_client
 
@@ -514,3 +516,29 @@ def test_add_tranche_unknown_simulation_returns_404(
     )
 
     assert response.status_code == 404
+
+
+def test_create_app_seeds_demo_simulation_with_all_alerts():
+    app = create_app("sqlite://", seed_demo=True)
+
+    with TestClient(app) as demo_client:
+        simulations = demo_client.get("/simulations/").json()
+
+        assert len(simulations) == 1
+        assert simulations[0]["nom"] == DEMO_SIMULATION_NAME
+        result = demo_client.post(
+            f"/simulations/{simulations[0]['simulation_id']}/run"
+        ).json()
+
+    assert {alerte["type_alerte"] for alerte in result["alertes"]} == {
+        type_alerte.value for type_alerte in TypeAlerte
+    }
+
+
+def test_demo_seed_is_idempotent(tmp_path):
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+
+    for _ in range(2):
+        app = create_app(database_url, seed_demo=True)
+        with TestClient(app) as demo_client:
+            assert len(demo_client.get("/simulations/").json()) == 1

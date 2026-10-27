@@ -9,10 +9,16 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import Session
 
+from chaours.db.models import SimulationTable
+from chaours.db.repository import create_simulation
 from chaours.db.session import (
     build_engine,
     build_session_factory,
     create_db_and_tables,
+)
+from chaours.demo import (
+    DEMO_SIMULATION_ID,
+    build_demo_simulation,
 )
 
 
@@ -35,14 +41,30 @@ def build_app_context(database_url: str | None = None) -> AppContext:
     )
 
 
+def ensure_demo_simulation(context: AppContext) -> bool:
+    """Ajoute la démonstration par défaut si elle n'existe pas déjà."""
+    with context.session_factory() as session:
+        if session.get(SimulationTable, DEMO_SIMULATION_ID) is not None:
+            return False
+        create_simulation(
+            session,
+            build_demo_simulation(),
+            simulation_id=DEMO_SIMULATION_ID,
+        )
+        return True
+
+
 def create_lifespan(
     database_url: str | None = None,
+    seed_demo: bool = True,
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     """Construit le gestionnaire de cycle de vie de l'application."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         context = build_app_context(database_url)
+        if seed_demo:
+            ensure_demo_simulation(context)
         app.state.context = context
         try:
             yield

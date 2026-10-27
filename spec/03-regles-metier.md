@@ -96,7 +96,7 @@ Logique :
 
 - Le premier jour où la consommation demandée dépasse le stock est le jour de déficit.
 - Ce jour-là, la production réelle vaut le stock restant, puis 0 jusqu'au rechargement suivant.
-- Une déplétion lève une alerte `NEUTRONIC_ANOMALY` de gravité `CRITICAL`.
+- Une déplétion lève une alerte `NEUTRONIC_ANOMALY`.
 - L'alerte demande à l'utilisateur de corriger la trajectoire par une modulation manuelle avant l'arrêt.
 - Une déplétion sans arrêt futur lève aussi une alerte.
 
@@ -148,7 +148,6 @@ Logique :
 - Convertir l'énergie en puissance moyenne en divisant par 24, puis calculer la variation absolue entre deux jours consécutifs.
 - Comparer cette variation au seuil de 100 MW.
 - Le jour de l'alerte est le second jour de la variation.
-- La gravité est `WARNING`.
 
 ```python
 # Variation absolue de puissance moyenne, par tranche
@@ -172,13 +171,7 @@ Sorties : nombre d'équipes mobilisées par jour et alertes de dépassement.
 
 Logique : sommation du nombre d'arrêts en cours à un instant donné. Si le nombre d'arrêts simultanés dépasse la capacité d'équipes, renvoyer un conflit de ressources à l'interface.
 
-### D. Niveaux de gravité
-
-- `CRITICAL` : alertes neutroniques (`NEUTRONIC_ANOMALY`) et déficits nationaux (`RTE_DEFICIT`).
-- `WARNING` : alertes REMIT (`REMIT_UMM`) et prix spot sous la valeur d'usage (`SPOT_BELOW_USAGE_VALUE`).
-- `INFO` : réservé aux messages informatifs, sans modification des facteurs de charge.
-
-### E. Portée des alertes
+### D. Portée des alertes
 
 - Une alerte de tranche porte un identifiant de tranche. Elle est affichée sur la timeline de cette tranche.
 - Une alerte nationale ne porte pas d'identifiant de tranche. Elle est affichée dans la barre latérale de la simulation.

@@ -8,7 +8,6 @@ from chaours.alerts import (
 )
 from chaours.types import (
     Arret,
-    Gravite,
     ResultatTranche,
     TypeAlerte,
     TypeArret,
@@ -70,7 +69,6 @@ def test_neutronic_alert_when_depletion_precedes_outage():
     assert len(alerts) == 1
     alert = alerts[0]
     assert alert.type_alerte == TypeAlerte.NEUTRONIC_ANOMALY
-    assert alert.gravite == Gravite.CRITICAL
     assert alert.jour == 3
     assert alert.tranche_id == "P1"
     assert "6" in alert.message
@@ -122,7 +120,6 @@ def test_remit_alert_above_threshold():
 
     assert len(alerts) == 1
     assert alerts[0].type_alerte == TypeAlerte.REMIT_UMM
-    assert alerts[0].gravite == Gravite.WARNING
     assert alerts[0].jour == 1
     assert alerts[0].tranche_id == "P1"
     assert "P1" in alerts[0].message
@@ -179,7 +176,6 @@ def test_deficit_alert_per_deficit_day():
     assert all(
         alerte.type_alerte == TypeAlerte.RTE_DEFICIT for alerte in alerts
     )
-    assert all(alerte.gravite == Gravite.CRITICAL for alerte in alerts)
     assert all(alerte.tranche_id is None for alerte in alerts)
 
 

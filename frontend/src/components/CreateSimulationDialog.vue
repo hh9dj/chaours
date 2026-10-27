@@ -16,10 +16,6 @@ const store = useSimulationsStore()
 const formulaire = reactive({
   nom: '',
   horizon_jours: 365,
-  identifiant: '',
-  code_eic: '',
-  puissance_nominale_mw: 0,
-  jepp_initial: 0,
 })
 
 const erreurs = ref<Record<string, string>>({})
@@ -35,25 +31,6 @@ function valider(): boolean {
   if (!Number.isInteger(horizon) || horizon < 1 || horizon > 7305) {
     prochainesErreurs.horizon_jours =
       'L’horizon doit être un nombre entier compris entre 1 et 7305 jours.'
-  }
-  if (formulaire.identifiant.trim().length === 0) {
-    prochainesErreurs.identifiant = 'L’identifiant de la tranche est obligatoire.'
-  }
-  if (formulaire.code_eic.trim().length === 0) {
-    prochainesErreurs.code_eic = 'Le code EIC est obligatoire.'
-  }
-  if (
-    !Number.isFinite(Number(formulaire.puissance_nominale_mw)) ||
-    Number(formulaire.puissance_nominale_mw) <= 0
-  ) {
-    prochainesErreurs.puissance_nominale_mw =
-      'La puissance nominale doit être supérieure à 0 MW.'
-  }
-  if (
-    !Number.isFinite(Number(formulaire.jepp_initial)) ||
-    Number(formulaire.jepp_initial) < 0
-  ) {
-    prochainesErreurs.jepp_initial = 'Le JEPP initial doit être positif ou nul.'
   }
 
   erreurs.value = prochainesErreurs
@@ -75,18 +52,7 @@ async function soumettre() {
       prix_spot_eur_mwh: serie(80),
       demande_nationale_mwh: serie(0),
       valeur_usage_eur_mwh: serie(60),
-      tranches: [
-        {
-          tranche: {
-            identifiant: formulaire.identifiant.trim(),
-            code_eic: formulaire.code_eic.trim(),
-            puissance_nominale_mw: Number(formulaire.puissance_nominale_mw),
-            jepp_initial: Number(formulaire.jepp_initial),
-          },
-          arrets: [],
-          modulations: [],
-        },
-      ],
+      tranches: [],
     })
     emit('cree', simulation)
   } catch (error) {
@@ -98,7 +64,7 @@ async function soumettre() {
 <template>
   <BaseDialog
     titre="Créer une simulation"
-    description="Le scénario démarre avec une tranche et des séries nationales plates."
+    description="Le scénario démarre sans tranche et avec des séries nationales plates."
     :closeable="!store.saving"
     @fermer="emit('fermer')"
   >
@@ -159,89 +125,11 @@ async function soumettre() {
           Valeurs initiales : prix spot 80 €/MWh, demande nationale 0 MWh et
           valeur d’usage 60 €/MWh sur tout l’horizon.
         </p>
-      </fieldset>
 
-      <fieldset class="space-y-4">
-        <legend class="mb-1 text-sm font-semibold text-slate-950">
-          Première tranche
-        </legend>
-
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label for="creation-identifiant" class="etiquette">
-              Identifiant
-            </label>
-            <input
-              id="creation-identifiant"
-              v-model="formulaire.identifiant"
-              class="champ"
-              type="text"
-              autocomplete="off"
-              required
-              :aria-invalid="Boolean(erreurs.identifiant)"
-            />
-            <p v-if="erreurs.identifiant" class="mt-1 text-xs text-red-700">
-              {{ erreurs.identifiant }}
-            </p>
-          </div>
-
-          <div>
-            <label for="creation-code-eic" class="etiquette">Code EIC</label>
-            <input
-              id="creation-code-eic"
-              v-model="formulaire.code_eic"
-              class="champ"
-              type="text"
-              autocomplete="off"
-              required
-              :aria-invalid="Boolean(erreurs.code_eic)"
-            />
-            <p v-if="erreurs.code_eic" class="mt-1 text-xs text-red-700">
-              {{ erreurs.code_eic }}
-            </p>
-          </div>
-
-          <div>
-            <label for="creation-puissance" class="etiquette">
-              Puissance nominale (MW)
-            </label>
-            <input
-              id="creation-puissance"
-              v-model.number="formulaire.puissance_nominale_mw"
-              class="champ"
-              type="number"
-              min="0"
-              step="any"
-              required
-              :aria-invalid="Boolean(erreurs.puissance_nominale_mw)"
-            />
-            <p
-              v-if="erreurs.puissance_nominale_mw"
-              class="mt-1 text-xs text-red-700"
-            >
-              {{ erreurs.puissance_nominale_mw }}
-            </p>
-          </div>
-
-          <div>
-            <label for="creation-jepp" class="etiquette">
-              JEPP initial
-            </label>
-            <input
-              id="creation-jepp"
-              v-model.number="formulaire.jepp_initial"
-              class="champ"
-              type="number"
-              min="0"
-              step="any"
-              required
-              :aria-invalid="Boolean(erreurs.jepp_initial)"
-            />
-            <p v-if="erreurs.jepp_initial" class="mt-1 text-xs text-red-700">
-              {{ erreurs.jepp_initial }}
-            </p>
-          </div>
-        </div>
+        <p class="rounded-lg bg-edf-blue/5 px-3 py-2 text-xs text-edf-blue">
+          Les tranches nucléaires s’ajoutent ensuite depuis la vue de la
+          simulation.
+        </p>
       </fieldset>
 
       <div class="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-4">

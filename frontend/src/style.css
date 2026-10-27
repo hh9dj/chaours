@@ -2,16 +2,28 @@
 
 @theme {
   --font-sans: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+
+  --color-edf-blue: #07387a;
+  --color-edf-blue-deep: #052a5c;
+  --color-edf-blue-light: #0a4f9c;
+  --color-edf-orange: #ff5e11;
+  --color-edf-orange-dark: #c84505;
+  --color-edf-cyan: #029eda;
+  --color-edf-teal: #3b8988;
+  --color-edf-lime: #c8da2c;
+  --color-edf-grey: #e0e0e0;
+  --color-edf-ink: #333333;
+  --color-edf-paper: #f7f6f1;
 }
 
 @layer base {
   html {
     min-width: 320px;
-    background-color: var(--color-slate-100);
+    background-color: var(--color-edf-paper);
   }
 
   body {
-    @apply min-h-screen bg-slate-100 text-slate-900 antialiased;
+    @apply min-h-screen bg-edf-paper text-edf-ink antialiased;
   }
 
   button,
@@ -23,29 +35,29 @@
   }
 
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-sky-600;
+    @apply outline-2 outline-offset-2 outline-edf-orange;
   }
 
   ::selection {
-    @apply bg-sky-200 text-slate-950;
+    @apply bg-orange-200 text-edf-blue;
   }
 }
 
 @layer components {
   .bouton-primaire {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-edf-blue px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-edf-blue-light disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .bouton-secondaire {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-edf-grey bg-white px-4 py-2.5 text-sm font-semibold text-edf-blue shadow-sm transition hover:border-edf-blue hover:bg-edf-paper disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .bouton-discret {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-edf-paper hover:text-edf-blue;
   }
 
   .champ {
-    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100;
+    @apply w-full rounded-lg border border-edf-grey bg-white px-3 py-2 text-sm text-edf-ink shadow-sm transition placeholder:text-slate-400 focus:border-edf-blue focus:ring-2 focus:ring-edf-blue/15;
   }
 
   .etiquette {
@@ -53,6 +65,6 @@
   }
 
   .panneau {
-    @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+    @apply rounded-2xl border border-edf-grey bg-white shadow-sm;
   }
 }

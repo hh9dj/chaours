@@ -7,6 +7,7 @@ import type {
   Simulation,
   SimulationCreation,
   SimulationResume,
+  SimulationTranche,
 } from './types'
 
 const DEFAULT_API_BASE_URL = 'http://localhost:8000'
@@ -218,6 +219,19 @@ export function supprimerSimulation(simulationId: string): Promise<void> {
   })
 }
 
+export function ajouterTranche(
+  simulationId: string,
+  payload: SimulationTranche,
+): Promise<Simulation> {
+  return requete<Simulation>(
+    `/simulations/${encodeURIComponent(simulationId)}/plants`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
 export function modifierConfigurationTranche(
   simulationId: string,
   trancheId: string,
@@ -275,6 +289,7 @@ export const api = {
   chargerSimulation,
   modifierSimulation,
   supprimerSimulation,
+  ajouterTranche,
   modifierConfigurationTranche,
   modifierArrets,
   modifierModulations,

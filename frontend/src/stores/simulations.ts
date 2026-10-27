@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 
 import {
   ApiError,
+  ajouterTranche as ajouterTrancheApi,
   chargerSimulation as chargerSimulationApi,
   creerSimulation as creerSimulationApi,
   executerSimulation,
@@ -22,6 +23,7 @@ import type {
   Simulation,
   SimulationCreation,
   SimulationResume,
+  SimulationTranche,
 } from '../api/types'
 
 interface EtatSimulations {
@@ -135,6 +137,27 @@ export const useSimulationsStore = defineStore('simulations', {
         }
       } catch (error) {
         this.definirErreur(error)
+        throw error
+      } finally {
+        this.saving = false
+      }
+    },
+
+    async ajouterTranche(
+      simulationId: string,
+      payload: SimulationTranche,
+    ) {
+      this.saving = true
+      this.reinitialiserErreur()
+      try {
+        this.currentSimulation = await ajouterTrancheApi(
+          simulationId,
+          payload,
+        )
+        this.currentResult = await executerSimulation(simulationId)
+      } catch (error) {
+        this.definirErreur(error)
+        await this.rechargerApresEchec(simulationId)
         throw error
       } finally {
         this.saving = false
