@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Mapping, Sequence
 
 import numpy as np

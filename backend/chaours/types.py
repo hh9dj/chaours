@@ -1,9 +1,8 @@
-from __future__ import annotations
-
 import math
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from enum import Enum
+from itertools import pairwise
 from typing import Self
 from uuid import UUID, uuid4
 
@@ -122,7 +121,7 @@ def _validate_no_overlap(
     label: str,
 ) -> None:
     ordered = sorted(windows, key=lambda window: window.jour_debut)
-    for previous, current in zip(ordered, ordered[1:]):
+    for previous, current in pairwise(ordered):
         if current.jour_debut < previous.jour_fin:
             raise ValueError(
                 f"overlapping {label} windows: "

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 import numpy as np
@@ -45,9 +43,7 @@ def apply_manual_modulation(
     result = factors.copy()
 
     for modulation in modulations:
-        result[
-            modulation.jour_debut : modulation.jour_fin
-        ] = modulation.facteur
+        result[modulation.jour_debut : modulation.jour_fin] = modulation.facteur
 
     return result
 

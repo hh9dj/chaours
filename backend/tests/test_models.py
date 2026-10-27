@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 import math
-from datetime import timezone
+from datetime import UTC
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -86,7 +84,7 @@ def test_simulation_defaults_generate_uuid_and_utc_timestamp():
     simulation = _simulation()
 
     assert isinstance(simulation.simulation_id, UUID)
-    assert simulation.cree_le.tzinfo == timezone.utc
+    assert simulation.cree_le.tzinfo == UTC
 
 
 def test_tranche_rejects_empty_ids_and_invalid_values():
