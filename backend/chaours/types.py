@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Self
 from uuid import UUID, uuid4
@@ -169,9 +169,7 @@ class Simulation(_DomainModel):
 
     simulation_id: UUID = Field(default_factory=uuid4)
     nom: str = Field(min_length=1, max_length=200)
-    cree_le: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    cree_le: datetime = Field(default_factory=lambda: datetime.now(UTC))
     horizon_jours: int = Field(ge=1, le=MAX_HORIZON_DAYS)
     prix_spot_eur_mwh: list[float]
     demande_nationale_mwh: list[float]
@@ -222,8 +220,7 @@ class Simulation(_DomainModel):
     def arrets_par_tranche(self) -> dict[str, tuple[Arret, ...]]:
         """Renvoie les arrêts de chaque tranche, indexés par identifiant."""
         return {
-            entry.tranche.identifiant: tuple(entry.arrets)
-            for entry in self.tranches
+            entry.tranche.identifiant: tuple(entry.arrets) for entry in self.tranches
         }
 
     @property
@@ -308,9 +305,7 @@ class ResultatTranche(_DomainModel):
     def _valid_production_factors(cls, values: list[float]) -> list[float]:
         _ensure_finite(values, "facteurs_production")
         if any(value < 0.0 or value > 1.0 for value in values):
-            raise ValueError(
-                "facteurs_production must be between 0.0 and 1.0"
-            )
+            raise ValueError("facteurs_production must be between 0.0 and 1.0")
         return values
 
     @field_validator("energie_mwh", "jepp_restant")
@@ -318,9 +313,7 @@ class ResultatTranche(_DomainModel):
     def _finite_non_negative(cls, values: list[float]) -> list[float]:
         _ensure_finite(values, "energie_mwh/jepp_restant")
         if any(value < 0.0 for value in values):
-            raise ValueError(
-                "energie_mwh and jepp_restant must be non-negative"
-            )
+            raise ValueError("energie_mwh and jepp_restant must be non-negative")
         return values
 
     @field_validator("jours_epuisement")
@@ -392,9 +385,7 @@ class ResultatSimulation(_DomainModel):
     def _consistent_result(self) -> Self:
         horizon = len(self.demande_mwh)
         if len(self.offre_nationale_mwh) != horizon:
-            raise ValueError(
-                "offre_nationale_mwh length must equal demande_mwh length"
-            )
+            raise ValueError("offre_nationale_mwh length must equal demande_mwh length")
 
         tranche_ids = [resultat.tranche_id for resultat in self.tranches]
         if len(tranche_ids) != len(set(tranche_ids)):
@@ -408,8 +399,7 @@ class ResultatSimulation(_DomainModel):
                 )
             if len(resultat.energie_mwh) != horizon:
                 raise ValueError(
-                    f"energie_mwh length must equal horizon for "
-                    f"{resultat.tranche_id!r}"
+                    f"energie_mwh length must equal horizon for {resultat.tranche_id!r}"
                 )
             if len(resultat.jepp_restant) != horizon:
                 raise ValueError(
@@ -418,23 +408,15 @@ class ResultatSimulation(_DomainModel):
                 )
             for day in resultat.jours_epuisement:
                 if day < 0 or day >= horizon:
-                    raise ValueError(
-                        f"depletion day {day} outside horizon {horizon}"
-                    )
+                    raise ValueError(f"depletion day {day} outside horizon {horizon}")
 
         for day in self.jours_deficit:
             if day < 0 or day >= horizon:
-                raise ValueError(
-                    f"deficit day {day} outside horizon {horizon}"
-                )
+                raise ValueError(f"deficit day {day} outside horizon {horizon}")
 
         for alerte in self.alertes:
-            if alerte.jour is not None and (
-                alerte.jour < 0 or alerte.jour >= horizon
-            ):
-                raise ValueError(
-                    f"alert day {alerte.jour} outside horizon {horizon}"
-                )
+            if alerte.jour is not None and (alerte.jour < 0 or alerte.jour >= horizon):
+                raise ValueError(f"alert day {alerte.jour} outside horizon {horizon}")
 
         return self
 
@@ -447,13 +429,9 @@ class ResultatSimulation(_DomainModel):
         for alerte in self.alertes:
             if alerte.tranche_id is not None:
                 grouped.setdefault(alerte.tranche_id, []).append(alerte)
-        return {
-            tranche_id: tuple(items) for tranche_id, items in grouped.items()
-        }
+        return {tranche_id: tuple(items) for tranche_id, items in grouped.items()}
 
     @property
     def alertes_nationales(self) -> tuple[Alerte, ...]:
         """Renvoie les alertes qui ne visent aucune tranche."""
-        return tuple(
-            alerte for alerte in self.alertes if alerte.tranche_id is None
-        )
+        return tuple(alerte for alerte in self.alertes if alerte.tranche_id is None)
