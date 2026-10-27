@@ -16,17 +16,8 @@ import ChaoursLogo from './components/ChaoursLogo.vue'
           aria-label="CHAOURS, revenir au tableau de bord"
         >
           <ChaoursLogo />
-          <span>
-            <span class="block text-base font-bold tracking-[0.18em]">CHAOURS</span>
-            <span class="block text-xs text-blue-100/75">
-              Programmation des arrêts nucléaires
-            </span>
-          </span>
+          <span class="block text-base font-bold tracking-[0.18em]">CHAOURS</span>
         </RouterLink>
-
-        <p class="hidden text-xs text-blue-100/75 md:block">
-          Les calculs sont réalisés côté serveur.
-        </p>
       </div>
     </header>
 

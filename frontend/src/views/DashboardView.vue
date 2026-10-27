@@ -64,8 +64,7 @@ onMounted(() => {
           Simulations
         </h1>
         <p class="mt-2 max-w-2xl text-sm text-slate-600">
-          Consultez les scénarios de programmation, puis ouvrez une simulation
-          pour ajuster les arrêts, les modulations et les paramètres nationaux.
+          Consulter ou créer une simulation
         </p>
       </div>
 
