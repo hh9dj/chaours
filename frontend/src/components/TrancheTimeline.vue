@@ -89,6 +89,42 @@ const jours = computed(() =>
   }),
 )
 
+interface PlageMaintenance {
+  debut: number
+  fin: number
+}
+
+const plagesMaintenance = computed<PlageMaintenance[]>(() => {
+  const plages: PlageMaintenance[] = []
+  let debut: number | null = null
+
+  for (const jour of jours.value) {
+    if (jour.estMaintenance && debut === null) {
+      debut = jour.jour
+    }
+    if (!jour.estMaintenance && debut !== null) {
+      plages.push({ debut, fin: jour.jour - 1 })
+      debut = null
+    }
+  }
+
+  if (debut !== null) {
+    const dernier =
+      jours.value[jours.value.length - 1]?.jour ?? debut
+    plages.push({ debut, fin: dernier })
+  }
+
+  return plages
+})
+
+function stylePlageMaintenance(plage: PlageMaintenance) {
+  const horizon = Math.max(1, props.horizonJours)
+  return {
+    left: `${(plage.debut / horizon) * 100}%`,
+    width: `${((plage.fin - plage.debut + 1) / horizon) * 100}%`,
+  }
+}
+
 const zoomMax = computed(() => zoomMaximum(props.horizonJours))
 const zoomCourant = computed(() =>
   bornerZoom(props.zoom, props.horizonJours),
@@ -392,9 +428,16 @@ onBeforeUnmount(() => {
       @scroll.passive="surDefilement"
     >
       <div
-        class="flex h-full min-w-full items-end px-2 pb-9 pt-7"
+        class="relative flex h-full min-w-full items-end pb-9 pt-7"
         :style="{ width: `${zoomCourant * 100}%` }"
       >
+        <div
+          v-for="plage in plagesMaintenance"
+          :key="`maintenance-${plage.debut}`"
+          class="hachures-maintenance pointer-events-none absolute bottom-9 top-7 rounded-t-[2px]"
+          :style="stylePlageMaintenance(plage)"
+          aria-hidden="true"
+        />
         <div
           v-for="jour in jours"
           :key="jour.jour"
@@ -414,10 +457,15 @@ onBeforeUnmount(() => {
             class="w-full rounded-t-[2px] transition group-hover:brightness-110"
             :class="
               jour.estMaintenance
-                ? 'bg-slate-400'
+                ? 'bg-transparent'
                 : classesCouleurJepp[jour.couleurJepp]
             "
             :style="{ height: `${jour.hauteurAffichee}%` }"
+            aria-hidden="true"
+          />
+          <span
+            v-if="jour.estMaintenance"
+            class="pointer-events-none absolute inset-0 rounded-sm bg-transparent transition-colors duration-150 group-hover:bg-slate-950 group-focus-within:bg-slate-950"
             aria-hidden="true"
           />
           <button
@@ -489,7 +537,10 @@ onBeforeUnmount(() => {
         hauteur = production
       </span>
       <span class="inline-flex items-center gap-1.5">
-        <span class="h-3 w-2 rounded-sm bg-slate-400" aria-hidden="true" />
+        <span
+          class="hachures-maintenance h-3 w-4 rounded-sm"
+          aria-hidden="true"
+        />
         maintenance
       </span>
       <span

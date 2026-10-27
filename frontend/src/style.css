@@ -67,4 +67,14 @@
   .panneau {
     @apply rounded-2xl border border-edf-grey bg-white shadow-sm;
   }
+
+  .hachures-maintenance {
+    background-image: repeating-linear-gradient(
+      30deg,
+      #ffffff 0,
+      #ffffff 11px,
+      #94a3b8 11px,
+      #94a3b8 22px
+    );
+  }
 }

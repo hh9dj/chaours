@@ -104,7 +104,7 @@ describe('construireJoursTimeline', () => {
     expect(jours[7].jour).toBe(7)
   })
 
-  it('affiche une maintenance grise et pleine hauteur', () => {
+  it('affiche une maintenance hachurée et pleine hauteur', () => {
     expect(estMaintenance(1, simulationTranche.arrets)).toBe(true)
     expect(jours[1].estMaintenance).toBe(true)
     expect(jours[1].hauteurProduction).toBe(0)
