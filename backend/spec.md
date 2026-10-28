@@ -24,6 +24,7 @@ backend/
     __init__.py
     app.py
     config.py
+    context.py
     schemas.py
     routers/
       __init__.py
@@ -74,7 +75,7 @@ The backend uses four packages:
 
 - `core/` holds the domain: input models, result models, shared domain building blocks, and the calculation engine.
 - `services/` holds the application use cases: orchestration, missing-data error translation, and the engine call.
-- `api/` holds the HTTP adapter: the FastAPI application, API configuration, request and response schemas, and routers.
+- `api/` holds the HTTP adapter: the FastAPI application, API configuration, the typed application context, request and response schemas, and routers.
 - `db/` holds persistence: settings, engine and session construction, SQLModel tables, the repository implementation, and the demo seed.
 
 `main.py` starts uvicorn. `cli.py` runs the local simulation CLI.
@@ -84,14 +85,15 @@ Dependency direction:
 - `core.models` depends only on Pydantic, NumPy, and the standard library.
 - `core.engine` depends on `core.models`.
 - `api.schemas` depends on `core.models` only. It must not import FastAPI, `services`, or `db`.
+- `api.context` depends on FastAPI, SQLAlchemy, and SQLModel. It must not import `services` or `db`.
 - `services.simulations` depends on `core.models`, `core.engine`, `api.schemas`, and `db.repository`.
 - `db.config` depends only on Pydantic Settings.
-- `db.database` depends on `db.config`, SQLAlchemy or SQLModel, and FastAPI only for request dependencies. It never imports a service or router.
+- `db.database` depends on `api.context`, `db.config`, SQLAlchemy or SQLModel, and FastAPI for `Depends`. It never imports a service or router.
 - `db.tables` depends on `core.models`.
 - `db.repository` depends on `core.models`, `api.schemas`, and `db.tables`.
-- `db.seed` depends on `core.models`, `api.schemas`, `db.database`, and `db.repository`.
+- `db.seed` depends on `api.context`, `core.models`, `api.schemas`, and `db.repository`.
 - `api.routers` depends on `api.schemas`, `services.simulations`, `core`, and `db`.
-- `api.app` depends on `api.routers`, `api.config`, `core.models`, `db.database`, `db.tables`, and `db.seed`.
+- `api.app` depends on `api.routers`, `api.config`, `api.context`, `core.models`, `db.database`, `db.tables`, and `db.seed`.
 - `cli` depends on `core.models` and `core.engine`. It must not import `api.app` or the routers.
 - `core.models` must not depend on FastAPI, SQLModel, or SQLAlchemy.
 - The engine must not depend on SQLAlchemy.
@@ -400,7 +402,7 @@ Application factory:
 
 - `create_app(database_url: str | None = None) -> FastAPI` in `backend/api/app.py`.
 - Module-level `app = create_app()` for uvicorn.
-- Build a typed `AppContext` during lifespan startup.
+- Build a typed `AppContext` from `backend/api/context.py` during lifespan startup.
 - Create tables during lifespan startup.
 - Seed the demonstration simulation with a fixed id when it is absent.
 - Dispose the SQLAlchemy engine during lifespan shutdown.
@@ -534,27 +536,3 @@ Required tests:
 - `integration/api/test_simulations.py`: list, create, get, add tranche, update settings, update tranche config, update outages, update modulations, run, delete, `404`, `422`.
 
 Use in-memory SQLite for repository and API tests. Use FastAPI `TestClient`.
-
-## 13. Backend implementation checklist
-
-- [x] Replace `PlantPlan` with `SimulationTranche`.
-- [x] Rename the aggregate `Scenario` to `Simulation`.
-- [x] Replace `scenario_id` with `simulation_id` everywhere.
-- [x] Rename Pydantic classes and fields to French names.
-- [x] Replace per-tranche VU mapping with national VU series.
-- [x] Update validation rules and result models.
-- [x] Update engine, alerts, production, JEPP, aggregation, and CLI.
-- [x] Replace JSON table models with normalized tables.
-- [x] Implement composite keys, foreign keys, and cascade deletes.
-- [x] Implement repository functions and day-row integrity checks.
-- [x] Implement list and update API endpoints.
-- [x] Implement the add-tranche endpoint.
-- [x] Update all backend tests.
-- [x] Allow simulations with an empty tranche list.
-- [x] Add a typed application context and lifespan-managed engine.
-- [x] Seed the demonstration simulation at startup.
-- [x] Delete the local old `chaours.db`.
-- [x] Run `just backend-check`.
-- [x] Run the CLI.
-- [x] Remove alert gravity levels from the API.
-- [x] Leave changes uncommitted.

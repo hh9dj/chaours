@@ -10,16 +10,16 @@ from sqlmodel import SQLModel
 
 import db.tables as _tables  # noqa: F401
 from api.config import LOCAL_FRONTEND_ORIGINS
+from api.context import AppContext
 from api.routers import simulations
 from core.models import SimulationNotFoundError, TrancheNotFoundError
-from db.database import AppContext, create_schema
-from db.database import build_app_context as build_database_context
+from db.database import build_db_context, create_schema
 from db.seed import ensure_demo_simulation
 
 
 def build_app_context(database_url: str | None = None) -> AppContext:
     """Construit le moteur SQLite, la fabrique de sessions et les tables."""
-    context = build_database_context(database_url)
+    context = build_db_context(database_url)
     create_schema(context.engine, SQLModel.metadata)
     return context
 

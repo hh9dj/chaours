@@ -2,9 +2,9 @@ from uuid import UUID
 
 import numpy as np
 
+from api.context import AppContext
 from api.schemas import SimulationCreation
 from core.models import Arret, Modulation, SimulationTranche, Tranche, TypeArret
-from db.database import AppContext
 from db.repository import SimulationRepository
 
 DEMO_SIMULATION_ID = UUID("2f9e3c1a-8b7d-4e6f-9a2b-3c4d5e6f7a8b")

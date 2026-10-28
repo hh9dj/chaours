@@ -18,13 +18,13 @@ from core.models import (
     Simulation,
     SimulationTranche,
 )
-from db.database import get_session
+from db.database import get_db_session
 from db.repository import SimulationRepository
 from services.simulations import SimulationService
 
 
 def get_simulation_service(
-    session: Annotated[Session, Depends(get_session)],
+    session: Annotated[Session, Depends(get_db_session)],
 ) -> SimulationService:
     """Construit le service des simulations pour la requête courante."""
     return SimulationService(SimulationRepository(session), SimulationEngine())

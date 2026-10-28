@@ -7,8 +7,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.app import create_app
+from api.context import AppContext
 from core.models import TypeAlerte
-from db.database import AppContext
 from db.seed import DEMO_SIMULATION_NAME
 
 
