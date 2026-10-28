@@ -1,52 +1,71 @@
 # Nuclear Planing
 
-CHAOURS est un simulateur interactif d'aide à la décision pour la programmation des tranches nucléaires. Il permet de tester les calendriers d'arrêt, de calculer l'épuisement du combustible (JEPP), de signaler les écarts entre valeur d'usage et prix spot, et de vérifier la sécurité d'approvisionnement électrique.
+CHAOURS is an interactive decision-support simulator for scheduling nuclear unit outages. It lets you test outage calendars, compute fuel depletion (JEPP), report deviations between usage value and spot price, and check electricity supply security.
 
 ## Documentation
 
-- [Concepts et règles métier](./spec/README.md)
-- [Spécification backend](./backend/spec.md)
-- [Spécification frontend](./frontend/spec.md)
+- [Concepts and business rules](./spec/README.md)
+- [Backend specification](./backend/spec.md)
+- [Frontend specification](./frontend/spec.md)
 
-## Vue d'ensemble
+## Overview
 
-L'application web est organisée autour de simulations isolées :
+The web application is organized around isolated simulations:
 
-- un dashboard liste les simulations sous forme de cartes et permet d'en créer une nouvelle ;
-- chaque simulation contient un horizon, des séries journalières nationales et plusieurs tranches ;
-- chaque tranche possède une timeline qui montre la production, les arrêts, les modulations et le niveau de JEPP ;
-- les alertes de tranche sont affichées sur la timeline ;
-- les alertes nationales sont regroupées dans une barre latérale.
+- a dashboard lists simulations as cards and lets you create a new one;
+- each simulation contains a horizon, national daily series, and several units;
+- each unit has a timeline that shows production, outages, modulations, and the JEPP level;
+- unit alerts are shown on the timeline;
+- national alerts are grouped in a sidebar.
 
-Les résultats de calcul, comme les alertes, les jours de déficit, les jours d'épuisement JEPP et l'offre journalière, sont recalculés et ne sont pas persistés.
+Computation results, such as alerts, deficit days, JEPP depletion days, and daily supply, are recomputed and not persisted.
 
-## Prérequis
+## Prerequisites
 
-- Nix avec les flakes activés.
-- direnv pour charger le shell de développement défini dans `flake.nix`.
+- Nix with flakes enabled.
+- direnv to load the development shell defined in `flake.nix`.
 
 ## Installation
 
-1. Autoriser le fichier `.envrc` :
+1. Install Nix:
+
+```sh
+sh <(curl -L https://nixos.org/nix/install) --daemon
+```
+
+2. Enable flakes:
+
+```sh
+mkdir -p ~/.config/nix
+echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+```
+
+3. Load the development shell, with direnv:
 
 ```sh
 direnv allow
 ```
 
-Le shell de développement fournit Node.js 22, pnpm, Python 3.12, uv, SQLite, ruff et just.
+or without direnv, for each session:
+
+```sh
+nix develop
+```
+
+The development shell provides Node.js 22, pnpm, Python 3.12, uv, SQLite, ruff, and just.
 
 ## Backend
 
-Lancer le CLI de simulation :
+Run the simulation CLI:
 
 ```sh
 just backend-run
 ```
 
-Lancer l'API FastAPI en développement :
+Run the FastAPI API in development:
 
 ```sh
 just backend-api
 ```
 
-L'API stocke les scénarios dans SQLite. Par défaut, la base est `./chaours.db`. La variable d'environnement `CHAOURS_DATABASE_URL` permet de changer l'URL, par exemple `sqlite:///./data/chaours.db`.
+The API stores scenarios in SQLite. By default, the database is `./chaours.db`. The environment variable `CHAOURS_DATABASE_URL` changes the URL, for example `sqlite:///./data/chaours.db`.
