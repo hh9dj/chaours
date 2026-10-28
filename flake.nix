@@ -19,6 +19,9 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
+          manim = pkgs.writeShellScriptBin "manim" ''
+            exec env -u PYTHONPATH ${pkgs.manim.overridePythonAttrs (_: { doCheck = false; })}/bin/manim "$@"
+          '';
         in
         {
           default = pkgs.mkShell {
@@ -39,6 +42,8 @@
               ruff
               pyright
               just
+              manim
+              ffmpeg
             ];
           };
         }

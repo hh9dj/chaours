@@ -33,6 +33,10 @@ __pycache__/
 .env.*
 !.env.example
 
+# Manim
+animation/media/
+animation/out/
+
 # Logs
 *.log
 
